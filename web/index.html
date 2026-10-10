@@ -1,0 +1,2873 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MicArray Studio — 麦克风阵列仿真</title>
+<style>
+/* ==========================================================================
+   深色主题：热力图用亮色 colormap，UI 本身尽量低饱和，避免污染判读。
+   ========================================================================== */
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;}
+body{
+  background:#0e1117;color:#d7dee9;overflow:hidden;
+  font:13px/1.45 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  display:grid;grid-template-rows:auto minmax(0,1fr) auto;
+}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+.muted{color:#8b98ab}
+.grow{flex:1 1 auto}
+.hidden{display:none !important}
+button,select,input{font-family:inherit;font-size:12px;color:#d7dee9}
+
+/* ---------- 顶栏 ---------- */
+#topbar{
+  display:flex;align-items:center;gap:10px;padding:7px 10px;
+  background:linear-gradient(180deg,#1b2230,#151a24);border-bottom:1px solid #2a3242;
+}
+.brand{font-weight:600;letter-spacing:.3px;white-space:nowrap}
+.brand small{font-weight:400;color:#8b98ab;margin-left:6px}
+.field{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.field>span{color:#8b98ab}
+select,input[type=number],input[type=text]{
+  background:#0f141c;border:1px solid #2f3a4d;border-radius:6px;padding:3px 6px;outline:none;
+}
+select:focus,input:focus{border-color:#4ea1ff}
+#metrics-strip{display:flex;gap:14px;padding:2px 10px;border-left:1px solid #2a3242;border-right:1px solid #2a3242}
+#metrics-strip span{display:flex;flex-direction:column;line-height:1.15}
+#metrics-strip b{font-size:14px;font-family:ui-monospace,Menlo,monospace}
+#metrics-strip i{font-style:normal;color:#8b98ab;font-size:10px}
+.note{color:#8b98ab;font-size:11px;max-width:330px;line-height:1.25;border-left:2px solid #4ea1ff;padding-left:6px}
+.btn{
+  background:#1d2634;border:1px solid #35435a;border-radius:6px;padding:5px 11px;cursor:pointer;white-space:nowrap;
+}
+.btn:hover{background:#253144;border-color:#4ea1ff}
+.btn.primary{background:#1c4f8a;border-color:#2f74c0}
+.btn.primary:hover{background:#22629f}
+.btn:disabled{opacity:.5;cursor:progress}
+.btn.sm{padding:2px 7px;font-size:11px}
+
+/* ---------- 三栏 ---------- */
+#layout{display:grid;grid-template-columns:330px minmax(0,1fr) 306px;gap:8px;padding:8px;min-height:0}
+.panel{background:#141922;border:1px solid #232c3b;border-radius:9px;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.panel>.body{overflow:auto;padding:8px;display:flex;flex-direction:column;gap:8px;min-height:0}
+.ph{
+  display:flex;align-items:center;gap:6px;padding:6px 9px;background:#182031;border-bottom:1px solid #232c3b;
+  font-weight:600;font-size:12px;color:#b9c6d8;flex:0 0 auto;
+}
+.ph .tag{margin-left:auto;font-weight:400;font-size:10px;color:#8b98ab;background:#0f141c;border:1px solid #2a3242;border-radius:10px;padding:0 7px}
+.hint{color:#7b8798;font-size:11px;line-height:1.35}
+.cv-wrap{position:relative;flex:1 1 auto;min-height:110px}
+.cv-wrap>canvas{display:block;width:100%;height:100%;border-radius:7px;background:#0b0f16}
+
+/* ---------- 阵型编辑器 ---------- */
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:12px}
+.kv b{font-family:ui-monospace,Menlo,monospace;font-weight:600;text-align:right}
+.kv span{color:#8b98ab}
+#cv-hist{display:block;width:100%;height:92px;background:#0b0f16;border-radius:7px}
+
+/* ---------- 中栏 / 标签页 ---------- */
+#center{display:flex;flex-direction:column;gap:8px;min-height:0}
+#tabs{display:flex;gap:6px}
+.tab{
+  background:#141922;border:1px solid #232c3b;border-bottom:2px solid transparent;border-radius:8px 8px 0 0;
+  padding:7px 13px;cursor:pointer;color:#9fb0c6;
+}
+.tab:hover{color:#d7dee9;background:#1a2130}
+.tab.active{background:#1b2434;color:#eaf1fb;border-color:#2f3a4d;border-bottom-color:#4ea1ff}
+.view{display:none}
+.view.active{display:flex;flex-direction:column;gap:8px;min-height:0;flex:1 1 auto}
+.vtool{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:6px 9px;background:#141922;border:1px solid #232c3b;border-radius:8px}
+.vtool label{display:flex;align-items:center;gap:5px;color:#9fb0c6;white-space:nowrap}
+.vtool input[type=range]{width:120px;accent-color:#4ea1ff}
+.stage{position:relative;flex:1 1 auto;min-height:0;background:#141922;border:1px solid #232c3b;border-radius:9px;overflow:hidden}
+.stage>canvas{display:block;width:100%;height:100%}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1 1 auto;min-height:0}
+.cellwrap{position:relative;background:#141922;border:1px solid #232c3b;border-radius:9px;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+.cellwrap>.cap{padding:4px 8px;font-size:11px;color:#9fb0c6;background:#182031;border-bottom:1px solid #232c3b;display:flex;gap:8px}
+.cellwrap>.cap b{color:#eaf1fb}
+.cellwrap>.cvbox{position:relative;flex:1 1 auto;min-height:0}
+.cellwrap canvas{display:block;width:100%;height:100%}
+.legend{display:flex;align-items:center;gap:8px;font-size:11px;color:#8b98ab}
+.legend canvas{width:190px;height:12px;border-radius:3px;border:1px solid #2a3242}
+.ro{padding:7px 9px;background:#141922;border:1px solid #232c3b;border-radius:8px;font-size:12px}
+table.mini{border-collapse:collapse;font-size:11.5px;width:100%}
+table.mini th,table.mini td{border-bottom:1px solid #232c3b;padding:3px 6px;text-align:right}
+table.mini th{color:#8b98ab;font-weight:500;text-align:right}
+table.mini td:first-child,table.mini th:first-child{text-align:left}
+.pill{display:inline-block;padding:0 6px;border-radius:9px;font-size:10.5px;border:1px solid}
+.pill.ok{color:#35d07f;border-color:#2a6b4a;background:#10241b}
+.pill.bad{color:#ff6b6b;border-color:#6b2a2a;background:#241010}
+.pill.warn{color:#f2b134;border-color:#6b5520;background:#241f10}
+.pill.mock{color:#8b98ab;border-color:#3a4356;background:#161b24}
+
+/* ---------- 参数面板 ---------- */
+.sect{border:1px solid #232c3b;border-radius:8px;overflow:hidden;flex:0 0 auto}
+.sect>.h{padding:5px 8px;background:#182031;font-weight:600;font-size:11.5px;color:#b9c6d8;cursor:pointer;display:flex;align-items:center;gap:6px}
+.sect>.c{padding:7px 8px;display:flex;flex-direction:column;gap:6px}
+.sect.collapsed>.c{display:none}
+.row{display:grid;grid-template-columns:74px 1fr 52px;align-items:center;gap:6px}
+.row>label{color:#8b98ab;font-size:11.5px}
+.row>output{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;text-align:right;color:#cfe0f5}
+.row.wide{grid-template-columns:74px 1fr}
+.row input[type=range]{width:100%;accent-color:#4ea1ff}
+.chk{display:flex;align-items:center;gap:6px;font-size:12px;color:#c3cfdf}
+.chk input{accent-color:#4ea1ff}
+.chks{display:grid;grid-template-columns:1fr 1fr;gap:3px 8px}
+
+/* ---------- 底栏 ---------- */
+#statusbar{
+  display:flex;align-items:center;gap:10px;padding:5px 10px;background:#151a24;border-top:1px solid #2a3242;font-size:11.5px;
+}
+#st-msg{color:#c3cfdf;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:52vw}
+#st-msg.err{color:#ff8080}
+#st-msg.warn{color:#f2b134}
+.linkbtn{background:none;border:none;color:#7fa8dd;cursor:pointer;padding:0 2px;font-size:11.5px}
+#logpanel{
+  position:fixed;right:10px;bottom:36px;width:min(720px,70vw);max-height:44vh;overflow:auto;
+  background:#0f141ceb;border:1px solid #35435a;border-radius:9px;padding:8px;font-size:11.5px;z-index:40;
+  font-family:ui-monospace,Menlo,monospace;white-space:pre-wrap;
+}
+#tooltip{
+  position:fixed;pointer-events:none;z-index:60;background:#0b0f16ee;border:1px solid #4ea1ff;border-radius:6px;
+  padding:4px 7px;font-size:11.5px;font-family:ui-monospace,Menlo,monospace;line-height:1.4;white-space:nowrap;
+}
+.spin{display:inline-block;width:9px;height:9px;border:2px solid #4ea1ff;border-top-color:transparent;border-radius:50%;
+  animation:sp .7s linear infinite;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.bar{height:8px;background:#0f141c;border:1px solid #2a3242;border-radius:5px;overflow:hidden}
+.bar>i{display:block;height:100%;background:linear-gradient(90deg,#1c4f8a,#4ea1ff);width:0}
+.filelist{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;columns:2;column-gap:16px;color:#c3cfdf}
+.audio{width:100%;height:32px;margin-top:3px}
+</style>
+</head>
+<body>
+
+<!-- ======================= 顶栏 ======================= -->
+<header id="topbar">
+  <div class="brand">🎙 MicArray Studio<small>麦克风阵列仿真</small></div>
+  <label class="field"><span>阵列预设</span><select id="preset-select" title="/api/arrays → presets"></select></label>
+  <div id="metrics-strip">
+    <span><b id="m-nmics">–</b><i>阵元数</i></span>
+    <span><b id="m-aperture">–</b><i>口径 m</i></span>
+    <span><b id="m-minspacing">–</b><i>最近间距 m</i></span>
+    <span><b id="m-grating">–</b><i>无混叠上限 Hz</i></span>
+    <span><b id="m-redundancy">–</b><i>冗余度</i></span>
+  </div>
+  <div class="grow"></div>
+  <div class="note" id="angle-note"></div>
+  <button id="btn-run" class="btn primary" title="重新请求当前视图所需的数据">▶ 运行</button>
+  <button id="btn-export" class="btn" title="POST /api/export/cpp → 轮询 /api/jobs/&lt;id&gt;">导出 C++</button>
+</header>
+
+<!-- ======================= 主体三栏 ======================= -->
+<main id="layout">
+
+  <!-- ---------- 左：阵型编辑器 ---------- -->
+  <aside class="panel" id="left">
+    <div class="ph">阵型编辑器<span class="tag" id="array-kind">–</span></div>
+    <div class="body">
+      <div class="cv-wrap" style="min-height:250px"><canvas id="cv-array"></canvas></div>
+      <div class="hint">左键拖拽阵元（拖动后变为“自定义”）· 滚轮缩放 · 右键/中键平移 · 双击复位视图</div>
+      <div class="kv" id="array-metrics"></div>
+      <div class="ph" style="border:1px solid #232c3b;border-radius:7px">间距直方图</div>
+      <canvas id="cv-hist"></canvas>
+      <div class="hint" id="hist-note">–</div>
+    </div>
+  </aside>
+
+  <!-- ---------- 中：主视图 ---------- -->
+  <section id="center">
+    <nav id="tabs">
+      <button class="tab active" data-view="beam">① 波束图 (u-v 圆盘)</button>
+      <button class="tab" data-view="locate">② 声场图 / 定位</button>
+      <button class="tab" data-view="imaging">③ 声场成像</button>
+      <button class="tab" data-view="enhance">④ 语音增强</button>
+      <button class="tab" data-view="export">⑤ C++ 导出</button>
+    </nav>
+
+    <!-- ① 波束图 -->
+    <div class="view active" id="view-beam">
+      <div class="vtool">
+        <label>方法 <select id="bf-method"></select></label>
+        <label>频率 <input type="range" id="bf-fidx" min="0" max="0" value="0"><b class="mono" id="bf-freq">–</b></label>
+        <label>动态范围 <input type="range" id="bf-range" min="10" max="60" value="35"><b class="mono" id="bf-range-v">35 dB</b></label>
+        <label>投影 <select id="bf-proj"><option value="disk">u-v 圆盘</option><option value="rect">az-el 矩形</option></select></label>
+        <span class="legend"><canvas id="bf-legend"></canvas><span id="bf-legend-lab" class="mono">–</span></span>
+        <div class="grow"></div>
+        <span id="bf-info" class="muted"></span>
+      </div>
+      <div class="stage"><canvas id="cv-beam"></canvas></div>
+      <div class="ro" id="bf-annot">–</div>
+    </div>
+
+    <!-- ② 声场图 / 定位 -->
+    <div class="view" id="view-locate">
+      <div class="vtool">
+        <label>方法 <select id="lo-method">
+          <option value="srp_phat">SRP-PHAT</option><option value="music">MUSIC</option>
+          <option value="tdoa">TDOA</option><option value="hybrid">Hybrid</option></select></label>
+        <label>投影 <select id="lo-proj"><option value="disk">u-v 圆盘</option><option value="rect">az-el 矩形</option></select></label>
+        <label>动态范围 <input type="range" id="lo-range" min="3" max="40" value="3"><b class="mono" id="lo-range-v">自动</b></label>
+        <label class="chk"><input type="checkbox" id="lo-showgrid" checked>网格</label>
+        <span class="legend"><canvas id="lo-legend"></canvas><span class="mono" id="lo-legend-lab">–</span></span>
+      </div>
+      <div class="stage"><canvas id="cv-locate"></canvas></div>
+      <div class="ro" id="lo-annot">–</div>
+    </div>
+
+    <!-- ③ 声场成像 -->
+    <div class="view" id="view-imaging">
+      <div class="vtool">
+        <label>方法 <select id="im-method">
+          <option value="damas">DAMAS</option><option value="clean">CLEAN-SC</option>
+          <option value="nnls">NNLS</option><option value="fista">FISTA</option></select></label>
+        <label>投影 <select id="im-proj"><option value="disk">u-v 圆盘</option><option value="rect">az-el 矩形</option></select></label>
+        <label>动态范围 <input type="range" id="im-range" min="3" max="40" value="3"><b class="mono" id="im-range-v">25 dB</b></label>
+        <div class="grow"></div><span class="muted" id="im-info"></span>
+      </div>
+      <div class="split">
+        <div class="cellwrap"><div class="cap">脏图 dirty（常规波束成形）<b class="grow"></b><span id="im-dirty-w" class="mono"></span></div>
+          <div class="cvbox"><canvas id="cv-dirty"></canvas></div></div>
+        <div class="cellwrap"><div class="cap">反卷积 deconv<b class="grow"></b><span id="im-deconv-w" class="mono"></span></div>
+          <div class="cvbox"><canvas id="cv-deconv"></canvas></div></div>
+      </div>
+      <div class="ro" id="im-annot">–</div>
+    </div>
+
+    <!-- ④ 语音增强 -->
+    <div class="view" id="view-enhance">
+      <div class="vtool">
+        <label>方法 <select id="en-method">
+          <option value="mvdr">MVDR</option><option value="delay_sum">延迟求和</option>
+          <option value="superdirective">超指向</option><option value="wiener">Wiener 后滤波</option></select></label>
+        <label class="chk"><input type="checkbox" id="en-demo">仅增强输出（无参考）</label>
+        <div class="grow"></div><span class="muted" id="en-info"></span>
+      </div>
+      <div class="split" style="grid-template-columns:minmax(0,1.05fr) minmax(0,1fr)">
+        <div class="cellwrap"><div class="cap">指标对比（输入 vs 输出）</div><div class="cvbox"><canvas id="cv-enbars"></canvas></div></div>
+        <div class="cellwrap"><div class="cap">收敛曲线</div><div class="cvbox"><canvas id="cv-encurve"></canvas></div></div>
+      </div>
+      <div class="ro" id="en-annot">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>增强输出 <span class="mono muted" id="en-a1-lab">–</span><audio class="audio" id="au-enh" controls preload="none"></audio></div>
+          <div>含噪输入 <span class="mono muted" id="en-a2-lab">–</span><audio class="audio" id="au-noisy" controls preload="none"></audio></div>
+        </div>
+        <div class="hint" style="margin-top:6px">音频由后端 <span class="mono">/api/audio/&lt;id&gt;.wav</span> 提供（标准库 wave 写出）。离线 Mock 模式没有音频。</div>
+      </div>
+    </div>
+
+    <!-- ⑤ C++ 导出 -->
+    <div class="view" id="view-export">
+      <div class="vtool">
+        <label>模块名 <input type="text" id="ex-name" value="beamformer" size="12"></label>
+        <label>方法 <select id="ex-method"><option>delay_sum</option><option>mvdr</option><option>superdirective</option></select></label>
+        <label>容差 <input type="number" id="ex-tol" value="1e-6" step="1e-7" min="0" style="width:88px"></label>
+        <label class="chk"><input type="checkbox" id="ex-verify" checked>编译并跑 parity</label>
+        <button class="btn primary" id="ex-run">开始导出</button>
+        <div class="grow"></div><span class="muted">POST /api/export/cpp → 轮询 GET /api/jobs/&lt;id&gt;</span>
+      </div>
+      <div class="ro" id="ex-status">尚未开始。</div>
+      <div class="bar"><i id="ex-bar"></i></div>
+      <div id="ex-parity" class="ro">parity：–</div>
+      <div class="ro" style="flex:1 1 auto;overflow:auto;min-height:0">
+        <div style="margin-bottom:4px">文件列表 <span class="muted" id="ex-outdir"></span></div>
+        <div class="filelist" id="ex-files">–</div>
+      </div>
+      <details class="ro"><summary style="cursor:pointer">编译日志 compile_log</summary>
+        <pre class="mono" id="ex-log" style="max-height:200px;overflow:auto;margin:6px 0 0;font-size:11px;color:#9fb0c6">–</pre></details>
+    </div>
+  </section>
+
+  <!-- ---------- 右：参数面板 ---------- -->
+  <aside class="panel" id="right">
+    <div class="ph">参数面板<span class="tag" id="param-src">–</span></div>
+    <div class="body">
+
+      <div class="sect" data-sect="array"><div class="h">阵列 / 几何</div><div class="c">
+        <div class="row wide"><label>阵型</label><select id="p-kind">
+          <option value="uca">均匀圆阵 UCA</option><option value="ula">均匀线阵 ULA</option>
+          <option value="grid">矩形栅格</option><option value="spiral_arm">螺旋臂</option>
+          <option value="vogel">Vogel 螺旋</option><option value="multi_ring">多环阵</option></select></div>
+        <div class="row"><label>阵元数</label><input type="range" id="p-nmics" min="4" max="64" step="1" value="16"><output id="p-nmics-v"></output></div>
+        <div class="row"><label>半径/间距</label><input type="range" id="p-radius" min="0.02" max="0.5" step="0.005" value="0.1"><output id="p-radius-v"></output></div>
+        <div class="row wide"><button class="btn sm" id="p-apply-array">重建阵列</button></div>
+      </div></div>
+
+      <div class="sect" data-sect="source"><div class="h">声源</div><div class="c">
+        <div class="row"><label>方位 az</label><input type="range" id="p-az" min="-180" max="180" step="1" value="30"><output id="p-az-v"></output></div>
+        <div class="row"><label>俯仰 el</label><input type="range" id="p-el" min="-90" max="90" step="1" value="60"><output id="p-el-v"></output></div>
+        <div class="row"><label>距离 m</label><input type="range" id="p-dist" min="0.3" max="6" step="0.1" value="1.5"><output id="p-dist-v"></output></div>
+        <div class="hint">el 从 xy 平面量向 +z：<b>el=+90° 正对阵列 (boresight)</b>，el=0° 在阵面切线方向，el=-90° 为阵列正后方。</div>
+      </div></div>
+
+      <div class="sect" data-sect="room"><div class="h">房间 / 反射</div><div class="c">
+        <div class="chk"><input type="checkbox" id="p-room-on"><label for="p-room-on">启用镜像源房间反射</label></div>
+        <div class="row"><label>长 L m</label><input type="range" id="p-roomL" min="2" max="12" step="0.5" value="6"><output id="p-roomL-v"></output></div>
+        <div class="row"><label>宽 W m</label><input type="range" id="p-roomW" min="2" max="12" step="0.5" value="5"><output id="p-roomW-v"></output></div>
+        <div class="row"><label>高 H m</label><input type="range" id="p-roomH" min="2" max="6" step="0.1" value="3"><output id="p-roomH-v"></output></div>
+        <div class="row"><label>吸声系数</label><input type="range" id="p-absorb" min="0" max="0.95" step="0.05" value="0.3"><output id="p-absorb-v"></output></div>
+        <div class="row"><label>反射阶数</label><input type="range" id="p-order" min="0" max="4" step="1" value="2"><output id="p-order-v"></output></div>
+      </div></div>
+
+      <div class="sect" data-sect="noise"><div class="h">噪声 / 失配</div><div class="c">
+        <div class="row"><label>SNR dB</label><input type="range" id="p-snr" min="-10" max="40" step="1" value="15"><output id="p-snr-v"></output></div>
+        <div class="row"><label>增益 σ</label><input type="range" id="p-gainstd" min="0" max="0.5" step="0.01" value="0"><output id="p-gainstd-v"></output></div>
+        <div class="row"><label>相位 σ °</label><input type="range" id="p-phasestd" min="0" max="45" step="1" value="0"><output id="p-phasestd-v"></output></div>
+        <div class="hint">失配模拟阵元增益/相位随机误差：WNG 会被拉低，超指向方法最先失效。</div>
+      </div></div>
+
+      <div class="sect" data-sect="method"><div class="h">波束成形方法</div><div class="c">
+        <div class="chks" id="p-methods"></div>
+        <div class="row wide"><label>显示</label><select id="p-showmethod"></select></div>
+      </div></div>
+
+      <div class="sect" data-sect="freq"><div class="h">频率 / 网格</div><div class="c">
+        <div class="row"><label>f 下限 Hz</label><input type="range" id="p-fmin" min="50" max="7000" step="50" value="300"><output id="p-fmin-v"></output></div>
+        <div class="row"><label>f 上限 Hz</label><input type="range" id="p-fmax" min="200" max="8000" step="100" value="4000"><output id="p-fmax-v"></output></div>
+        <div class="row"><label>频点数</label><input type="range" id="p-fn" min="1" max="48" step="1" value="24"><output id="p-fn-v"></output></div>
+        <div class="row"><label>方位格数</label><input type="range" id="p-azbins" min="12" max="181" step="1" value="72"><output id="p-azbins-v"></output></div>
+        <div class="row"><label>俯仰格数</label><input type="range" id="p-elbins" min="1" max="91" step="1" value="37"><output id="p-elbins-v"></output></div>
+        <div class="hint" id="grid-note">俯仰格数设为 1 时网格退化成单个仰角环（阵面内），圆盘投影不再有意义，视图会自动切到极坐标条带显示。</div>
+      </div></div>
+
+      <div class="sect" data-sect="run"><div class="h">运行</div><div class="c">
+        <div class="row wide"><button class="btn primary" id="p-run-all">▶ 运行全部视图</button></div>
+        <div class="row wide"><button class="btn sm" id="p-run-cur">运行当前视图</button></div>
+        <div class="hint">参数改动会在 300 ms 防抖后自动重算“当前视图”；其它视图标记为待更新（标签页上的 •），切过去时自动补算。</div>
+      </div></div>
+
+      <div class="sect" data-sect="misc"><div class="h">其它</div><div class="c">
+        <div class="row"><label>声速 m/s</label><input type="range" id="p-c" min="300" max="400" step="1" value="343"><output id="p-c-v"></output></div>
+        <div class="row wide"><label class="chk"><input type="checkbox" id="p-auto" checked>参数变化自动重算 (300ms)</label></div>
+        <div class="row wide"><button class="btn sm" id="p-reset">恢复默认参数</button></div>
+      </div></div>
+
+    </div>
+  </aside>
+</main>
+
+<!-- ======================= 底栏 ======================= -->
+<footer id="statusbar">
+  <span id="st-mode" class="pill mock">初始化…</span>
+  <span id="st-msg">就绪</span>
+  <span class="grow"></span>
+  <span id="st-time" class="mono muted"></span>
+  <span id="st-api" class="mono muted"></span>
+  <button class="linkbtn" id="btn-log">错误日志 <b id="st-errcount">0</b></button>
+</footer>
+<div id="logpanel" class="hidden mono"></div>
+<div id="tooltip" class="hidden"></div>
+
+<script>
+"use strict";
+/* ============================================================================
+ * MicArray Studio —— 纯前端（原生 JS + Canvas，无任何第三方库）
+ *
+ * 代码分区（每段以 ===== 分隔）：
+ *   0. 常量 / 角度约定      1. 通用工具（数值、DOM、colormap）
+ *   2. 阵列几何数学         3. 状态 state
+ *   4. 后端 API 层          5. 内置 Mock（无后端也能用）
+ *   6. 数据归一化           7. Canvas 绘制原语（ImageData 热力图 / u-v 投影）
+ *   8. 各视图（阵型/波束/定位/成像/增强/导出）
+ *   9. UI 绑定与启动
+ *
+ * ★ 角度约定（CONTRACT 第 2 节，全文件唯一的真相）：
+ *   阵列坐标系：阵元在 xy 平面 (z=0)，boresight = +z。
+ *   az：xy 平面内从 +x 逆时针转向 +y，[-180,180]°。
+ *   el：从 xy 平面量向 +z，[-90,90]°；el=+90° 正对阵列，el=0° 在阵面内，el=-90° 背后。
+ *   方向向量 u(az,el) = [cos(el)cos(az), cos(el)sin(az), sin(el)]。
+ * ========================================================================== */
+
+/* ===== 0. 常量与角度约定 ================================================== */
+const C_SOUND_DEFAULT = 343.0;                       // m/s，CONTRACT 第 3 节
+const ANGLE_CONV_TEXT =
+  '角度约定：az 在 xy 平面内由 +x 逆时针量向 +y；el 由 xy 平面量向 +z。' +
+  'el=+90° 正对阵列 (boresight)，el=0° 在阵面内，el=-90° 为阵列正后方。所有输出都在阵列坐标系。';
+const DEG = Math.PI / 180, RAD = 180 / Math.PI;
+
+/** 方向向量：见文件头约定。 */
+function dirVec(az, el) {
+  const a = az * DEG, e = el * DEG, ce = Math.cos(e);
+  return [ce * Math.cos(a), ce * Math.sin(a), Math.sin(e)];
+}
+/** 方向向量 → (az, el)，度。 */
+function azElOf(u) {
+  const n = Math.hypot(u[0], u[1], u[2]) || 1;
+  const x = u[0] / n, y = u[1] / n, z = u[2] / n;
+  return { az: Math.atan2(y, x) * RAD, el: Math.asin(clamp(z, -1, 1)) * RAD };
+}
+/**
+ * u-v 投影：u = 方向的 x 分量, v = y 分量（即 CONTRACT 里 dirs[i][0], dirs[i][1]）。
+ * 为什么这样做：单位方向向量的 (x,y) 天然落在单位圆盘内，圆盘边界 = 阵面切线方向
+ * (el=0°)，圆心 = boresight (el=+90°)。这样不会像矩形 az-el 图那样在极点附近被
+ * 拉伸挤压（CONTRACT 第 2 节的建议）。圆盘外是"不可见区"；平面阵对后半球本来
+ * 就前后模糊，所以圆盘只呈现前半空间 el∈[0°,90°]，后半空间按 |el| 镜像折叠。
+ */
+/** u-v → (az, el)，el 取前半空间（>=0）。 */
+/* 注意：投影用的是 u = dirs[i][0], v = dirs[i][1]（即方向的 x/y 分量），
+   反投影就是上式；圆盘外无定义。 */
+function azElOfUV(u, v) {
+  const r2 = Math.min(1, u * u + v * v);
+  return { az: Math.atan2(v, u) * RAD, el: Math.acos(Math.sqrt(r2)) * RAD };
+}
+
+/* ===== 1. 通用工具 ======================================================= */
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
+const clamp = (v, a, b) => (v < a ? a : (v > b ? b : v));
+const isNum = (v) => typeof v === 'number' && isFinite(v);
+function fmt(v, d) {
+  d = (d === undefined) ? 3 : d;
+  if (!isNum(v)) return '–';
+  const a = Math.abs(v);
+  if (a !== 0 && (a < 1e-3 || a >= 1e5)) return v.toExponential(2);
+  return v.toFixed(d);
+}
+function debounce(fn, ms) {
+  let t = null;
+  const w = function () { const args = arguments; clearTimeout(t); t = setTimeout(() => fn.apply(null, args), ms); };
+  w.cancel = () => clearTimeout(t);
+  return w;
+}
+function el(tag, attrs, kids) {
+  const n = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    if (k === 'class') n.className = attrs[k];
+    else if (k === 'text') n.textContent = attrs[k];
+    else if (k === 'html') n.innerHTML = attrs[k];
+    else if (k.slice(0, 2) === 'on') n.addEventListener(k.slice(2), attrs[k]);
+    else n.setAttribute(k, attrs[k]);
+  }
+  (kids || []).forEach(k => n.appendChild(k));
+  return n;
+}
+const nowMs = () => (window.performance && performance.now) ? performance.now() : Date.now();
+
+/* ---- colormap：亮色，适合深色底上看热力图。控制点线性插值 → 256 级 LUT ---- */
+const CMAP_STOPS = {
+  viridis: [[68,1,84],[72,40,120],[62,74,137],[49,104,142],[38,130,142],[31,158,137],[53,183,121],[109,205,89],[180,222,44],[253,231,37]],
+  inferno: [[0,0,4],[22,11,57],[66,10,104],[106,23,110],[147,38,103],[188,55,84],[221,81,58],[243,120,25],[252,165,10],[246,215,70],[252,255,164]],
+  turbo:   [[48,18,59],[70,107,227],[40,187,235],[31,231,165],[154,251,60],[225,221,45],[252,157,36],[232,79,15],[122,4,3]],
+  gray:    [[8,10,14],[255,255,255]]
+};
+const LUT_CACHE = {};
+/** 取 256×3 的 LUT（Uint8ClampedArray）。 */
+function lut(name) {
+  if (LUT_CACHE[name]) return LUT_CACHE[name];
+  const st = CMAP_STOPS[name] || CMAP_STOPS.viridis, n = st.length;
+  const out = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255 * (n - 1), k = Math.min(n - 2, Math.floor(t)), f = t - k;
+    for (let c = 0; c < 3; c++) out[i * 3 + c] = st[k][c] + (st[k + 1][c] - st[k][c]) * f;
+  }
+  LUT_CACHE[name] = out;
+  return out;
+}
+function cssColor(name, t) {
+  const L = lut(name), i = clamp(Math.round(t * 255), 0, 255) * 3;
+  return 'rgb(' + L[i] + ',' + L[i + 1] + ',' + L[i + 2] + ')';
+}
+/** 色条图例（横向渐变 + 两端数值）。 */
+function drawColorbar(cv, name, vmin, vmax, unit) {
+  if (!cv) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.max(40, cv.clientWidth || 190), h = Math.max(8, cv.clientHeight || 12);
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const L = lut(name), iw = Math.max(2, Math.round(w));
+  const img = ctx.createImageData(iw, 1);
+  for (let x = 0; x < iw; x++) {
+    const i = clamp(Math.round(x / (iw - 1) * 255), 0, 255) * 3;
+    img.data[x * 4] = L[i]; img.data[x * 4 + 1] = L[i + 1]; img.data[x * 4 + 2] = L[i + 2]; img.data[x * 4 + 3] = 255;
+  }
+  const tmp = document.createElement('canvas'); tmp.width = iw; tmp.height = 1;
+  tmp.getContext('2d').putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(tmp, 0, 0, w, h);
+}
+
+/* ===== 2. 阵列几何数学（与 engine/geometry.py 同定义，便于拖拽后本地实时更新） ==== */
+const GEOM = {
+  pairwise(mics) {
+    const out = [];
+    for (let i = 0; i < mics.length; i++) for (let j = i + 1; j < mics.length; j++) {
+      out.push(Math.hypot(mics[i][0] - mics[j][0], mics[i][1] - mics[j][1], mics[i][2] - mics[j][2]));
+    }
+    return out;
+  },
+  centroid(mics) {
+    const c = [0, 0, 0];
+    mics.forEach(m => { c[0] += m[0]; c[1] += m[1]; c[2] += m[2]; });
+    const n = Math.max(1, mics.length);
+    return [c[0] / n, c[1] / n, c[2] / n];
+  },
+  aperture(mics) { const d = GEOM.pairwise(mics); return d.length ? Math.max.apply(null, d) : 0; },
+  minSpacing(mics) { const d = GEOM.pairwise(mics); return d.length ? Math.min.apply(null, d) : 0; },
+  gratingFreeFreq(mics, c) { const d = GEOM.minSpacing(mics); return d > 0 ? (c || C_SOUND_DEFAULT) / (2 * d) : Infinity; },
+  /** 冗余度：所有阵元对间距的重复程度。redundancy = n_pairs / n_unique，1.0 = 完全非冗余。 */
+  redundancyStats(mics, bins) {
+    bins = bins || 48;
+    const d = GEOM.pairwise(mics);
+    if (!d.length) return { n_pairs: 0, n_unique: 0, redundancy: 1, max_multiplicity: 0, coincident_pairs: 0, histogram: [] };
+    const ds = d.slice().sort((a, b) => a - b);
+    let groups = 0;
+    for (let k = 0, start = 0; k <= ds.length; k++) {
+      if (k === ds.length || ds[k] - ds[start] > 1e-9) { groups++; start = k; }
+    }
+    const dmax = ds[ds.length - 1], hist = [];
+    if (dmax > 0) {
+      for (let k = 0; k < bins; k++) {
+        const lo = dmax * k / bins, hi = dmax * (k + 1) / bins;
+        let cnt = 0;
+        for (let i = 0; i < ds.length; i++) if (ds[i] >= lo && (k === bins - 1 ? ds[i] <= hi : ds[i] < hi)) cnt++;
+        hist.push({ d: 0.5 * (lo + hi), count: cnt });
+      }
+    }
+    return {
+      n_pairs: d.length, n_unique: groups, redundancy: d.length / groups,
+      max_multiplicity: 0, coincident_pairs: d.filter(v => v < 1e-6).length, histogram: hist
+    };
+  },
+  metrics(mics, c) {
+    const red = GEOM.redundancyStats(mics);
+    return {
+      n_mics: mics.length, aperture: GEOM.aperture(mics), min_spacing: GEOM.minSpacing(mics),
+      grating_free_freq: GEOM.gratingFreeFreq(mics, c), redundancy: red
+    };
+  }
+};
+
+/* ===== 3. 状态 =========================================================== */
+function defaultParams() {
+  return {
+    preset: '', kind: 'uca', n_mics: 16, radius: 0.10, spacing: 0.04,
+    source: { az: 30, el: 60, distance: 1.5, amplitude: 1.0 },
+    room: { enabled: false, size: [6, 5, 3], absorption: 0.3, order: 2 },
+    noise: { snr_db: 15 },
+    mismatch: { gain_std: 0, phase_std_deg: 0 },
+    methods: ['delay_sum', 'mvdr', 'superdirective'],
+    method: 'delay_sum',
+    freq: { fmin: 300, fmax: 4000, n: 24 },
+    grid: { az_bins: 72, el_bins: 37 },
+    // locate/imaging 用 3 = "自动"（由 autoRangeDb 按数据实际分布定跨度）。
+    // 之前给固定 20/25 dB，而线性功率图的实际起伏常只有 9~12 dB，
+    // 于是所有值被挤到色标顶端 => 整张图一片均匀的黄（用户实际遇到的就是这个）。
+    dyn: { beam: 35, locate: 3, imaging: 3 },
+    locateMethod: 'srp_phat', imagingMethod: 'damas', enhanceMethod: 'mvdr',
+    enhanceDemo: false, c: C_SOUND_DEFAULT, auto: true,
+    export: { name: 'beamformer', method: 'delay_sum', tol: 1e-6, verify: true }
+  };
+}
+const state = {
+  apiBase: '',            // 同源为空串；file:// 打开时用 ?api=http://127.0.0.1:8765
+  online: false,          // /api/health 返回 200 才切到真实数据
+  health: null,
+  params: defaultParams(),
+  presets: [],
+  geometry: null,         // 归一化后的 GeometryJSON
+  geomDirty: false,       // 阵元被手动拖拽过 → "自定义"
+  view: 'beam',
+  data: { beam: null, locate: null, imaging: null, enhance: null },
+  busy: {},               // 正在进行的请求数（按视图）
+  log: [],
+  arr: { zoom: 1, panX: 0, panY: 0, drag: null, hover: -1 },
+  hover: { beam: null, locate: null, dirty: null, deconv: null },
+  exportJob: { id: null, status: '', progress: 0, result: null, timer: null, msgs: [] },
+  lastMs: 0,
+  dataSeq: 0                     // 每次成功拿到新数据就 +1，给 dB 缓存做版本键
+};
+
+/* ===== 4. 后端 API 层 ==================================================== */
+class ApiError extends Error {
+  constructor(msg, status, payload) { super(msg); this.zh = msg; this.status = status || 0; this.payload = payload || null; }
+}
+/** 解析 API base：?api=… > localStorage > 同源。方便直接 file:// 打开调试。 */
+function resolveApiBase() {
+  try {
+    const q = new URLSearchParams(location.search).get('api');
+    if (q) { localStorage.setItem('mas.api', q); return q.replace(/\/+$/, ''); }
+    const s = localStorage.getItem('mas.api');
+    if (s) return s.replace(/\/+$/, '');
+  } catch (e) { /* 隐私模式 / file:// 下 localStorage 可能抛错，忽略 */ }
+  return '';
+}
+/**
+ * 带超时与中文错误信息的 fetch 封装。
+ * 为什么手写 AbortController 而不用 AbortSignal.timeout：老浏览器没有后者，
+ * 而且这里要把"超时"和"连不上"区分成不同的中文提示。
+ */
+async function apiFetch(path, opts) {
+  opts = opts || {};
+  const timeout = opts.timeout || 12000;
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeout);
+  const t0 = nowMs();
+  try {
+    const init = { method: opts.method || 'GET', signal: ctrl.signal, cache: 'no-store' };
+    if (opts.body !== undefined && opts.body !== null) {
+      init.headers = { 'Content-Type': 'application/json' };
+      init.body = JSON.stringify(opts.body);
+    }
+    const res = await fetch(state.apiBase + path, init);
+    const text = await res.text();
+    let data = null;
+    if (text) { try { data = JSON.parse(text); } catch (e) { throw new ApiError('响应不是合法 JSON（HTTP ' + res.status + '）', res.status, text.slice(0, 300)); } }
+    if (!res.ok) {
+      const m = (data && (data.error || data.message)) || ('HTTP ' + res.status);
+      throw new ApiError(m, res.status, data);
+    }
+    state.lastMs = Math.round(nowMs() - t0);
+    return data;
+  } catch (e) {
+    if (e instanceof ApiError) throw e;
+    if (timedOut || e.name === 'AbortError') throw new ApiError('请求超时（>' + timeout + ' ms）：' + path, 0, null);
+    throw new ApiError('无法连接后端：' + (e && e.message ? e.message : e) + ' — ' + path +
+      (state.apiBase ? '' : '（同源请求失败，可用 ?api=http://host:port 指定后端）'), 0, null);
+  } finally { clearTimeout(timer); }
+}
+const API = {
+  health: () => apiFetch('/api/health', { timeout: 2500 }),
+  arrays: () => apiFetch('/api/arrays'),
+  design: (b) => apiFetch('/api/array/design', { method: 'POST', body: b }),
+  beamform: (b) => apiFetch('/api/beamform', { method: 'POST', body: b, timeout: 30000 }),
+  locate: (b) => apiFetch('/api/locate', { method: 'POST', body: b, timeout: 90000 }),
+  imaging: (b) => apiFetch('/api/imaging', { method: 'POST', body: b, timeout: 180000 }),
+  enhance: (b) => apiFetch('/api/enhance', { method: 'POST', body: b, timeout: 30000 }),
+  exportCpp: (b) => apiFetch('/api/export/cpp', { method: 'POST', body: b, timeout: 60000 }),
+  job: (id) => apiFetch('/api/jobs/' + encodeURIComponent(id), { timeout: 8000 }),
+  url: (p) => (p ? (state.apiBase + p) : '')
+};
+/** 组装请求体：一次把参数面板里所有相关项都发过去，后端可按需取用。 */
+function reqBody(extra) {
+  const P = state.params, g = state.geometry;
+  const body = {
+    geometry: g ? g.raw : null,
+    preset: P.preset || null,
+    kind: P.kind,
+    params: { n_mics: P.n_mics, radius: P.radius, spacing: P.spacing },
+    mics: g ? g.mics : null,
+    speed_of_sound: P.c,
+    steer: [P.source.az, P.source.el],
+    sources: [{ az: P.source.az, el: P.source.el, distance: P.source.distance, amplitude: P.source.amplitude }],
+    room: {
+      enabled: !!P.room.enabled, size: P.room.size.slice(),
+      bounds: [[0, 0, 0], [P.room.size[0], P.room.size[1], P.room.size[2]]],
+      absorption: P.room.absorption, order: P.room.order
+    },
+    noise: { snr_db: P.noise.snr_db },
+    mismatch: { gain_std: P.mismatch.gain_std, phase_std_deg: P.mismatch.phase_std_deg },
+    freqs: { fmin: P.freq.fmin, fmax: P.freq.fmax, n: P.freq.n },
+    freq_range: { fmin: P.freq.fmin, fmax: P.freq.fmax, n: P.freq.n },
+    grid: { az_bins: P.grid.az_bins, el_bins: P.grid.el_bins },
+    n_fft: 512, fs: 16000
+  };
+  if (extra) for (const k in extra) body[k] = extra[k];
+  return body;
+}
+
+/* ===== 5. 内置 Mock：没有后端也要能用（数值是简化模型，schema 与契约一致） ===== */
+const MOCK = {
+  PRESETS: [
+    { name: 'ula-8', label: '均匀线阵 ULA-8', kind: 'ula', n_mics: 8, params: { n_mics: 8, spacing: 0.04 } },
+    { name: 'uca-16', label: '均匀圆阵 UCA-16', kind: 'uca', n_mics: 16, params: { n_mics: 16, radius: 0.1 } },
+    { name: 'grid-16', label: '矩形栅格 4x4', kind: 'grid', n_mics: 16, params: { nx: 4, ny: 4, dx: 0.05, dy: 0.05 } },
+    { name: 'spiral-arm-16', label: '螺旋臂 16', kind: 'spiral_arm', n_mics: 16, params: { n_mics: 16, n_arms: 4, radius: 0.2 } },
+    { name: 'vogel-32', label: 'Vogel 螺旋 32', kind: 'vogel', n_mics: 32, params: { n_mics: 32, radius: 0.25 } },
+    { name: 'multi-ring-24', label: '多环阵 24', kind: 'multi_ring', n_mics: 24, params: { n_mics: 24, radius: 0.25, n_rings: 3 } }
+  ],
+  SHAPE: { delay_sum: [1.0, -13.5], mvdr: [1.9, -26], superdirective: [2.6, -32], fi: [1.5, -20], lcmv: [2.0, -28] },
+  buildMics(kind, p) {
+    p = p || {};
+    const n = Math.max(1, Math.round(p.n_mics || 8)), pts = [];
+    kind = (kind || 'uca').toLowerCase();
+    if (kind === 'ula') {
+      const d = p.spacing || 0.04;
+      for (let i = 0; i < n; i++) pts.push([(i - (n - 1) / 2) * d, 0, 0]);
+    } else if (kind === 'grid') {
+      const nx = Math.max(1, p.nx || 4), ny = Math.max(1, p.ny || 4), dx = p.dx || 0.05, dy = p.dy || 0.05;
+      for (let iy = 0; iy < ny; iy++) for (let ix = 0; ix < nx; ix++) pts.push([(ix - (nx - 1) / 2) * dx, (iy - (ny - 1) / 2) * dy, 0]);
+    } else if (kind === 'spiral_arm') {
+      const arms = Math.max(1, p.n_arms || 4), r = p.radius || 0.2, per = Math.max(1, Math.floor(n / arms));
+      for (let a = 0; a < arms; a++) {
+        const base = 2 * Math.PI * a / arms;
+        for (let k = 0; k < per; k++) {
+          const t = (k + 1) / per, rr = r * t, th = base + 1.6 * Math.PI * t;
+          pts.push([rr * Math.cos(th), rr * Math.sin(th), 0]);
+        }
+      }
+    } else if (kind === 'vogel') {
+      const r = p.radius || 0.25, ga = Math.PI * (3 - Math.sqrt(5));
+      for (let i = 0; i < n; i++) {
+        const rr = r * Math.sqrt((i + 0.5) / n), th = i * ga;
+        pts.push([rr * Math.cos(th), rr * Math.sin(th), 0]);
+      }
+    } else if (kind === 'multi_ring') {
+      const r = p.radius || 0.25, rings = Math.max(1, p.n_rings || 3);
+      let idx = 0;
+      for (let ri = 0; ri < rings; ri++) {
+        const rr = r * (ri + 1) / rings, cnt = Math.max(1, ri < rings - 1 ? Math.floor(n / rings) : n - idx);
+        for (let k = 0; k < cnt && idx < n; k++, idx++) {
+          const t = 2 * Math.PI * k / cnt;
+          pts.push([rr * Math.cos(t), rr * Math.sin(t), 0]);
+        }
+      }
+    } else {
+      const r = p.radius || 0.1;
+      for (let i = 0; i < n; i++) { const t = 2 * Math.PI * i / n; pts.push([r * Math.cos(t), r * Math.sin(t), 0]); }
+    }
+    if (!pts.length) pts.push([0, 0, 0]);
+    const c = GEOM.centroid(pts);
+    return pts.map(m => [m[0] - c[0], m[1] - c[1], m[2] - c[2]]);
+  },
+  geometryJSON(kind, params, name, mics) {
+    const P = state.params;
+    const m = mics || MOCK.buildMics(kind, params);
+    const cen = GEOM.centroid(m);
+    const centered = m.map(v => [v[0] - cen[0], v[1] - cen[1], v[2] - cen[2]]);
+    const met = GEOM.metrics(centered, P.c);
+    return {
+      name: name || kind, kind: kind || 'custom',
+      mics: centered.map(v => v.map(x => +x.toFixed(9))),
+      center: [0, 0, 0], center_offset: cen.map(x => +x.toFixed(9)),
+      params: params || {},
+      meta: {
+        n_mics: met.n_mics, aperture: +met.aperture.toFixed(6), min_spacing: +met.min_spacing.toFixed(6),
+        grating_free_freq: isFinite(met.grating_free_freq) ? +met.grating_free_freq.toFixed(1) : null,
+        speed_of_sound: P.c, redundancy: met.redundancy
+      }
+    };
+  },
+  designArray(body) {
+    body = body || {};
+    if (body.geometry && body.geometry.mics) return MOCK.geometryJSON(body.geometry.kind, body.geometry.params, body.geometry.name, body.geometry.mics);
+    if (body.mics && body.mics.length) return MOCK.geometryJSON(body.kind || 'custom', body.params, body.name || '自定义', body.mics);
+    if (body.preset) {
+      const p = MOCK.PRESETS.filter(x => x.name === body.preset)[0];
+      if (p) return MOCK.geometryJSON(p.kind, p.params, p.name);
+    }
+    return MOCK.geometryJSON(body.kind || state.params.kind, body.params || { n_mics: state.params.n_mics, radius: state.params.radius, spacing: state.params.spacing });
+  },
+  grid(azBins, elBins) {
+    azBins = Math.max(1, azBins | 0); elBins = Math.max(1, elBins | 0);
+    const azAxis = [], elAxis = [], dirs = [];
+    for (let i = 0; i < azBins; i++) azAxis.push(azBins === 1 ? 0 : -180 + 360 * i / (azBins - 1));
+    for (let i = 0; i < elBins; i++) elAxis.push(elBins === 1 ? 0 : -90 + 180 * i / (elBins - 1));
+    for (let ie = 0; ie < elBins; ie++) for (let ia = 0; ia < azBins; ia++) dirs.push(dirVec(azAxis[ia], elAxis[ie]));
+    return { dirs: dirs, shape: [elBins, azBins], azAxis: azAxis, elAxis: elAxis };
+  },
+  /** 延迟求和基准方向图（与方法无关；所有方法共用一遍，省 4× 三角函数）。 */
+  basePattern(mics, freqs, grid, su, mismatch) {
+    const M = mics.length, F = freqs.length, G = grid.dirs.length, out = [];
+    const sm = [su[0], su[1], su[2]];
+    for (let fi = 0; fi < F; fi++) {
+      const k = 2 * Math.PI * freqs[fi] / state.params.c;
+      const kp = mics.map(m => [k * m[0], k * m[1], k * m[2], k * (m[0] * sm[0] + m[1] * sm[1] + m[2] * sm[2])]);
+      const mm = mismatch > 0 ? mismatch * Math.pow(freqs[fi] / 4000, 2) * 3 : 0;
+      const row = new Float64Array(G);
+      for (let gi = 0; gi < G; gi++) {
+        const d = grid.dirs[gi];
+        let re = 0, im = 0;
+        for (let m = 0; m < M; m++) {
+          const p = kp[m];
+          const ph = -(p[0] * d[0] + p[1] * d[1] + p[2] * d[2]) + p[3];
+          re += Math.cos(ph); im += Math.sin(ph);
+        }
+        const p2 = Math.max(1e-12, (re * re + im * im) / (M * M));
+        row[gi] = 10 * Math.log10(p2) - mm;
+      }
+      // 归一到峰值 0 dB（与后端一致：主瓣顶端就是 0 dB）
+      let mx = -Infinity;
+      for (let i = 0; i < G; i++) if (row[i] > mx) mx = row[i];
+      for (let i = 0; i < G; i++) row[i] -= mx;
+      out.push(row);
+    }
+    return out;
+  },
+  /** 基准图 → 方法相关的方向图（锐化指数 + 旁瓣地板 + clamp）。 */
+  methodPattern(baseRow, sharp, floorDb) {
+    const row = new Array(baseRow.length);
+    for (let i = 0; i < baseRow.length; i++) {
+      let db = baseRow[i] * sharp;
+      if (db < floorDb) db = floorDb + (db - floorDb) * 0.15;
+      row[i] = +Math.max(-300, Math.min(40, db)).toFixed(3);
+    }
+    return row;
+  },
+  beamform(body) {
+    body = body || {};
+    const P = state.params;
+    const geom = (body.geometry && body.geometry.mics) ? body.geometry : MOCK.designArray({ preset: P.preset, kind: P.kind, params: { n_mics: P.n_mics, radius: P.radius, spacing: P.spacing } });
+    const mics = geom.mics;
+    const fr = body.freqs || P.freq;
+    const F = Math.max(1, Math.min(48, fr.n || 24));
+    const freqs = [];
+    for (let i = 0; i < F; i++) freqs.push(F === 1 ? (fr.fmin + fr.fmax) / 2 : fr.fmin + (fr.fmax - fr.fmin) * i / (F - 1));
+    const gr = body.grid || P.grid;
+    const azBins = Math.min(181, gr.az_bins || 72), elBins = Math.min(91, gr.el_bins || 37);
+    const G = MOCK.grid(azBins, elBins);
+    const steer = body.steer || [P.source.az, P.source.el];
+    const su = dirVec(steer[0], steer[1]);
+    const mm = (body.mismatch || P.mismatch);
+    const mism = (mm.phase_std_deg || 0) / 10 + (mm.gain_std || 0) * 10;
+    const methods = (body.methods && body.methods.length) ? body.methods : P.methods;
+    const ap = GEOM.aperture(mics) || 0.1, fKnee = P.c / (2 * Math.PI * Math.max(ap, 1e-3));
+    const mDb = 10 * Math.log10(mics.length);
+    const outMethods = {};
+    const baseRows = MOCK.basePattern(mics, freqs, G, su, mism);   // 与"方法"无关，只算一次
+    methods.forEach(mth => {
+      const sh = MOCK.SHAPE[mth] || [1, -14];
+      const pat = baseRows.map(row => MOCK.methodPattern(row, sh[0], sh[1]));
+      const drop = { delay_sum: 0, fi: 8, mvdr: 16, superdirective: 26 }[mth] !== undefined ? { delay_sum: 0, fi: 8, mvdr: 16, superdirective: 26 }[mth] : 12;
+      const boost = { delay_sum: 0, fi: 1.5, mvdr: 2.6, superdirective: 4 }[mth] || 1;
+      const wngDb = [], diDb = [], bw = [];
+      freqs.forEach(f => {
+        const ratio = Math.pow(f / fKnee, 2);
+        wngDb.push(+(mDb - drop / (1 + ratio) - mism * 1.5).toFixed(3));
+        diDb.push(+(Math.min(mDb + boost, (mDb + boost) * ratio / (1 + ratio))).toFixed(3));
+        bw.push(+MOCK.beamwidth(mics, f, steer[0], steer[1], sh[0]).toFixed(3));
+      });
+      outMethods[mth] = {
+        freqs: freqs.map(f => +f.toFixed(3)), pattern_db: pat, beamwidth_deg: bw,
+        metrics: { wng_db: wngDb, di_db: diDb, wng: wngDb.map(v => +Math.pow(10, v / 10).toFixed(6)), di: diDb.map(v => +Math.pow(10, v / 10).toFixed(6)), wng_min_db: Math.min.apply(null, wngDb), di_max_db: Math.max.apply(null, diDb) },
+        extra: { note: '内置 mock：简化延迟求和模型' }
+      };
+    });
+    return { dirs: G.dirs, shape: G.shape, az_axis: G.azAxis, el_axis: G.elAxis, freqs: freqs.map(f => +f.toFixed(3)), steer: steer, geometry: geom, methods: outMethods };
+  },
+  beamwidth(mics, f, az, el, sharp) {
+    const su = dirVec(az, el);
+    let best = -1e9; const prof = [];
+    for (let i = -90; i <= 90; i++) {
+      const d = dirVec(az + i, el);
+      let re = 0, im = 0;
+      const k = 2 * Math.PI * f / state.params.c;
+      for (let m = 0; m < mics.length; m++) {
+        const ph = -k * ((mics[m][0] * d[0] + mics[m][1] * d[1] + mics[m][2] * d[2]) - (mics[m][0] * su[0] + mics[m][1] * su[1] + mics[m][2] * su[2]));
+        re += Math.cos(ph); im += Math.sin(ph);
+      }
+      const db = 10 * Math.log10(Math.max(1e-12, (re * re + im * im) / (mics.length * mics.length))) * sharp;
+      prof.push([i, db]); if (db > best) best = db;
+    }
+    let L = 0, R = 0; const thr = best - 3;
+    prof.forEach(p => { if (p[0] <= 0 && p[1] >= thr) L = p[0]; if (p[0] >= 0 && p[1] >= thr) R = p[0]; });
+    return Math.max(0.5, R - L);
+  },
+  gaussMap(G, centers, sigma, base) {
+    base = base === undefined ? 0.02 : base;
+    const vals = new Array(G.dirs.length).fill(base), inv = 1 / (2 * sigma * sigma);
+    centers.forEach(c => {
+      const cu = dirVec(c.az, c.el);
+      for (let i = 0; i < G.dirs.length; i++) {
+        const d = G.dirs[i];
+        const dot = clamp(d[0] * cu[0] + d[1] * cu[1] + d[2] * cu[2], -1, 1);
+        const ang = Math.acos(dot) * RAD;
+        vals[i] += (c.amplitude === undefined ? 1 : c.amplitude) * Math.exp(-ang * ang * inv);
+      }
+    });
+    const mx = Math.max.apply(null, vals) || 1;
+    return vals.map(v => clamp(v / mx, 0, 1));
+  },
+  locate(body) {
+    body = body || {}; const P = state.params;
+    const gr = body.grid || P.grid, G = MOCK.grid(gr.az_bins, gr.el_bins);
+    const srcs = (body.sources && body.sources.length) ? body.sources : [P.source];
+    const snr = (body.noise && body.noise.snr_db !== undefined) ? body.noise.snr_db : P.noise.snr_db;
+    const sigma = clamp(4 - 0.05 * snr, 1.2, 4);
+    const map = MOCK.gaussMap(G, srcs, sigma);
+    const jit = clamp(2.5 - 0.05 * snr, 0.3, 2.5), rnd = mulberry(1234 + Math.round(snr * 97));
+    const est = srcs.map(s => {
+      const az = ((s.az + (rnd() * 2 - 1) * jit) + 540) % 360 - 180;
+      return [+az.toFixed(4), +clamp(s.el + (rnd() * 2 - 1) * jit, -90, 90).toFixed(4)];
+    });
+    return {
+      map: map.map(v => +v.toFixed(6)), shape: G.shape, az_axis: G.azAxis, el_axis: G.elAxis,
+      map_scale: 1, method: body.method || P.locateMethod, est_dirs: est,
+      est_xyz: est.map((e, i) => { const u = dirVec(e[0], e[1]), r = (srcs[i] && srcs[i].distance) || 1.5; return [u[0] * r, u[1] * r, u[2] * r]; }),
+      peak_vals: est.map(() => 1), n_sources: est.length,
+      truth: srcs.map(s => [+s.az, +s.el]), front_back_ambiguous: true, dirs: G.dirs
+    };
+  },
+  imaging(body) {
+    body = body || {}; const P = state.params;
+    const gr = body.grid || P.grid, G = MOCK.grid(gr.az_bins, gr.el_bins);
+    const srcs = (body.sources && body.sources.length) ? body.sources : [P.source];
+    return {
+      dirty: MOCK.gaussMap(G, srcs, 7.5).map(v => +v.toFixed(6)),
+      deconv: MOCK.gaussMap(G, srcs, 3.0).map(v => +v.toFixed(6)),
+      psf: MOCK.gaussMap(G, [{ az: 0, el: 90 }], 6).map(v => +v.toFixed(6)),
+      shape: G.shape, az_axis: G.azAxis, el_axis: G.elAxis,
+      method: body.method || P.imagingMethod, dynamic_range_db: 30, dirs: G.dirs
+    };
+  },
+  enhance(body) {
+    body = body || {}; const P = state.params, g = state.geometry;
+    const M = g ? g.mics.length : P.n_mics;
+    const snrIn = P.noise.snr_db;
+    const gain = 6.5 + 2 * Math.log10(Math.max(1, M)) - Math.abs(P.source.el - 90) * 0.02;
+    const snrOut = snrIn + gain, sdrIn = snrIn - 4.6, sdrOut = sdrIn + gain * 0.97;
+    const N = 40, curve = { t: [], snr_in_db: [], snr_out_db: [], si_sdr_in_db: [], si_sdr_out_db: [] };
+    for (let i = 0; i < N; i++) {
+      const x = i / (N - 1), conv = 1 - Math.exp(-3.2 * x);
+      curve.t.push(+x.toFixed(4));
+      curve.snr_in_db.push(+(snrIn + 0.15 * Math.sin(6 * x)).toFixed(3));
+      curve.snr_out_db.push(+(snrIn + gain * conv).toFixed(3));
+      curve.si_sdr_in_db.push(+(sdrIn + 0.15 * Math.cos(5 * x)).toFixed(3));
+      curve.si_sdr_out_db.push(+(sdrIn + gain * 0.97 * conv).toFixed(3));
+    }
+    const demo = !!P.enhanceDemo;
+    return {
+      snr_in: demo ? null : +snrIn.toFixed(3), snr_out: demo ? null : +snrOut.toFixed(3),
+      si_sdr_in: demo ? null : +sdrIn.toFixed(3), si_sdr_out: demo ? null : +sdrOut.toFixed(3),
+      snr_gain_db: demo ? null : +(snrOut - snrIn).toFixed(3), si_sdr_gain_db: demo ? null : +(sdrOut - sdrIn).toFixed(3),
+      stoi_proxy: demo ? null : +clamp(0.55 + 0.03 * snrIn + 0.012 * gain, 0.05, 0.99).toFixed(3),
+      stoi_proxy_in: demo ? null : +clamp(0.45 + 0.02 * snrIn, 0.05, 0.98).toFixed(3),
+      stoi_proxy_out: demo ? null : +clamp(0.55 + 0.03 * snrIn + 0.012 * gain, 0.05, 0.99).toFixed(3),
+      method: body.method || P.enhanceMethod, fs: 16000, n_samples: 16000, curve: curve,
+      audio_url: MOCK.audioUrl(true), noisy_audio_url: MOCK.audioUrl(false),
+      mock_audio: true, demo: demo
+    };
+  },
+  /** 内置 mock 用 WebAudio 之外的方式造音频：手写 WAV 头 + 16bit PCM，Blob URL。 */
+  _wavCache: {},
+  audioUrl(enhanced) {
+    const key = enhanced ? 'enh' : 'noisy';
+    if (MOCK._wavCache[key]) return MOCK._wavCache[key];
+    try {
+      const fs = 16000, n = 16000, buf = new ArrayBuffer(44 + n * 2), dv = new DataView(buf);
+      const wr = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+      wr(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); wr(8, 'WAVEfmt ');
+      dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+      dv.setUint32(24, fs, true); dv.setUint32(28, fs * 2, true); dv.setUint16(32, 2, true);
+      dv.setUint16(34, 16, true); wr(36, 'data'); dv.setUint32(40, n * 2, true);
+      let seed = 7;
+      const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff * 2 - 1; };
+      for (let i = 0; i < n; i++) {
+        const t = i / fs, env = 0.5 + 0.5 * Math.sin(2 * Math.PI * 1.7 * t);
+        const s = (Math.sin(2 * Math.PI * 220 * t) + 0.5 * Math.sin(2 * Math.PI * 440 * t) + 0.3 * Math.sin(2 * Math.PI * 880 * t)) * env / 1.8;
+        const v = clamp(0.6 * s + rnd() * (enhanced ? 0.05 : 0.3), -1, 1);
+        dv.setInt16(44 + i * 2, Math.round(v * 32000), true);
+      }
+      MOCK._wavCache[key] = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+    } catch (e) { MOCK._wavCache[key] = ''; }
+    return MOCK._wavCache[key];
+  },
+  /** 导出任务：用时间戳模拟进度，前端轮询逻辑与真实后端完全一致。 */
+  _jobs: {}, _seq: 0,
+  exportCpp(body) {
+    body = body || {};
+    const id = 'mock-exp-' + (++MOCK._seq);
+    MOCK._jobs[id] = { t0: nowMs(), verify: body.verify !== false, name: body.name || 'beamformer', tol: body.tol || 1e-6 };
+    return { job_id: id, status: 'running', progress: 0, files: [], compile_log: '', parity: null };
+  },
+  job(id) {
+    const j = MOCK._jobs[id];
+    if (!j) throw new ApiError('job not found: ' + id, 404, null);
+    const steps = ['生成 include/mas_array_config.hpp …', '生成 src/mas_fft.cpp …', '生成 src/mas_beamformer.cpp …',
+      '写测试向量 tests/vectors/*.json …', '写 CMakeLists.txt …', 'cmake 配置 …', '编译 mas_core …', '运行 test_parity …'];
+    const el2 = nowMs() - j.t0, dur = 1200;
+    const prog = clamp(el2 / dur, 0, 1), k = Math.min(steps.length - 1, Math.floor(prog * steps.length));
+    if (prog < 1) return { job_id: id, status: 'running', progress: +prog.toFixed(3), message: steps[k], result: null };
+    const parity = j.verify
+      ? { status: 'pass', tol: j.tol, errors: { fft: 3.1e-15, window_table: 1.2e-16, steering: 8.4e-16, beamform: 2.2e-15 }, stdout: '[fft] 最大相对误差 3.1e-15\n[window_table] 最大相对误差 1.2e-16\n[steering] 最大相对误差 8.4e-16\n[beamform] 最大相对误差 2.2e-15' }
+      : { status: 'skipped', tol: j.tol, errors: {}, stdout: '未编译（verify=false）' };
+    return {
+      job_id: id, status: 'done', progress: 1, message: '完成',
+      result: {
+        files: ['include/mas_array_config.hpp', 'include/mas_beamformer.hpp', 'src/mas_beamformer.cpp', 'src/mas_fft.cpp', 'tests/test_parity.cpp', 'tests/vectors/steering.json', 'CMakeLists.txt'],
+        outdir: 'export/' + j.name, compile_log: '[ 50%] Building CXX object CMakeFiles/mas_core.dir/src/mas_fft.cpp.o\n[100%] Built target test_parity\n',
+        parity: parity, elapsed_s: +(el2 / 1000).toFixed(3), mock: true
+      }
+    };
+  }
+};
+/** 可复现的伪随机（mock 用，避免每次刷新数据乱跳）。 */
+function mulberry(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/* ===== 6. 数据归一化：把后端/ mock 的 JSON 变成渲染器能直接吃的结构 ==========
+ * 为什么需要这一层：契约允许后端用不同别名（例如 pattern_db 顶层 vs methods 字典、
+ * metrics.beampattern、扁平数组 vs 嵌套数组），前端必须容错，同时保证渲染器只面对
+ * 一种形状。任何缺失的字段都用"可推导的默认值"补齐，缺数据时给出中文提示而不是崩。 */
+function numArr(a) {
+  if (!a) return [];
+  const out = [];
+  for (let i = 0; i < a.length; i++) { const v = +a[i]; out.push(isFinite(v) ? v : NaN); }
+  return out;
+}
+function normalizeGeometry(raw) {
+  if (!raw) return null;
+  let mics = raw.mics || raw.elements || [];
+  if (mics.length && typeof mics[0] === 'number') {          // 容错：扁平 [x,y,z,x,y,z,…]
+    const t = []; for (let i = 0; i + 2 < mics.length; i += 3) t.push([+mics[i], +mics[i + 1], +mics[i + 2]]);
+    mics = t;
+  }
+  mics = mics.map(m => [+m[0] || 0, +m[1] || 0, +m[2] || 0]);
+  if (!mics.length) return null;
+  // 质心平移到原点（CONTRACT 第 1 节），后端已经做过，这里再保险一次
+  const cen = GEOM.centroid(mics);
+  if (Math.hypot(cen[0], cen[1], cen[2]) > 1e-9) mics = mics.map(m => [m[0] - cen[0], m[1] - cen[1], m[2] - cen[2]]);
+  const meta = raw.meta || {};
+  const met = GEOM.metrics(mics, state.params.c);
+  let red = meta.redundancy || raw.redundancy;
+  if (!red || !red.histogram || !red.histogram.length) red = met.redundancy;
+  if (!red.histogram && met.redundancy.histogram) red.histogram = met.redundancy.histogram;
+  const metaOut = {
+    n_mics: meta.n_mics || raw.n_mics || mics.length,
+    aperture: isNum(meta.aperture) ? meta.aperture : (isNum(raw.aperture) ? raw.aperture : met.aperture),
+    min_spacing: isNum(meta.min_spacing) ? meta.min_spacing : (isNum(raw.min_spacing) ? raw.min_spacing : met.min_spacing),
+    grating_free_freq: isNum(meta.grating_free_freq) ? meta.grating_free_freq
+      : (isNum(raw.grating_free_freq) ? raw.grating_free_freq : (isFinite(met.grating_free_freq) ? met.grating_free_freq : null)),
+    redundancy: red
+  };
+  return {
+    name: raw.name || 'array', kind: raw.kind || 'custom', mics: mics, meta: metaOut,
+    params: raw.params || {}, center: raw.center || [0, 0, 0], raw: raw
+  };
+}
+/** 方向数组 → 单位方向向量 + 轴。支持 (G,3) 单位向量、(G,2) 的 [az,el] 度。 */
+function buildGrid(shape, azAxis, elAxis, dirs) {
+  const out = { shape: [0, 0], azAxis: [], elAxis: [], na: 0, ne: 0, periodicAz: false, dirs: [] };
+  let ne = 0, na = 0;
+  if (shape && shape.length >= 2) { ne = shape[0] | 0; na = shape[1] | 0; }
+  if (azAxis && azAxis.length) na = na || azAxis.length;
+  if (elAxis && elAxis.length) ne = ne || elAxis.length;
+  const shapeGiven = !!(shape && shape.length >= 2 && (shape[0] | 0) > 0 && (shape[1] | 0) > 0);
+  let D = [];
+  if (dirs && dirs.length) {
+    // 后端按契约（CONTRACT 第 8 节）发**扁平**数字数组：N*3 个分量。
+    // 早期这里只认三元组数组，扁平数组会让 first.length 为 undefined、
+    // 走到下面的退化兜底（ne=1），表现为"网格退化：仅单个仰角环"。
+    if (typeof dirs[0] === 'number') {
+      const flat = [];
+      for (let i = 0; i + 2 < dirs.length; i += 3) flat.push([dirs[i], dirs[i + 1], dirs[i + 2]]);
+      dirs = flat;
+    }
+    const first = dirs[0];
+    if (first && first.length === 2) {                       // 容错：[az, el] 度
+      D = dirs.map(d => dirVec(+d[0] || 0, +d[1] || 0));
+    } else {
+      D = dirs.map(d => {
+        const x = +d[0] || 0, y = +d[1] || 0, z = +d[2] || 0;
+        const n = Math.hypot(x, y, z) || 1;
+        return [x / n, y / n, z / n];
+      });
+    }
+    if (!shapeGiven) {
+      // 没有 shape 时按"方位角回绕"推断每行有多少点：dirs 是 el 外层、az 内层，
+      // 行内 az 递增，跨行时 az 会突然变小（-180 重新开始）。
+      let rowLen = D.length;
+      for (let i = 1; i < D.length; i++) {
+        if (azElOf(D[i]).az < azElOf(D[i - 1]).az - 1e-6) { rowLen = i; break; }
+      }
+      na = rowLen; ne = Math.max(1, Math.round(D.length / rowLen));
+    }
+  }
+  if (!D.length) {
+    if (!na) na = 72; if (!ne) ne = 37;
+    for (let ie = 0; ie < ne; ie++) for (let ia = 0; ia < na; ia++) {
+      const az = na === 1 ? 0 : -180 + 360 * ia / (na - 1);
+      const el = ne === 1 ? 0 : -90 + 180 * ie / (ne - 1);
+      D.push(dirVec(az, el));
+    }
+  }
+  if (na * ne !== D.length) { ne = 1; na = D.length; }         // shape 和数据不一致时退化
+  // 轴：优先用后端给的，否则由 dirs 反推
+  let AZ = azAxis && azAxis.length === na ? numArr(azAxis) : null;
+  let EL = elAxis && elAxis.length === ne ? numArr(elAxis) : null;
+  if (!AZ) { AZ = []; for (let ia = 0; ia < na; ia++) AZ.push(azElOf(D[ia]).az); }
+  if (!EL) { EL = []; for (let ie = 0; ie < ne; ie++) EL.push(azElOf(D[ie * na]).el); }
+  const span = Math.abs(AZ[na - 1] - AZ[0]);
+  out.shape = [ne, na]; out.na = na; out.ne = ne; out.azAxis = AZ; out.elAxis = EL; out.dirs = D;
+  out.periodicAz = na > 2 && Math.abs(span - 360) < 1e-6;
+  out.degenerateEl = (ne === 1);      // 单仰角环：圆盘投影退化成"按方位着色"
+  out.cosEl = new Float64Array(ne);
+  for (let ie = 0; ie < ne; ie++) out.cosEl[ie] = Math.cos(EL[ie] * DEG);
+  return out;
+}
+function normalizeBeam(raw) {
+  if (!raw) return null;
+  const dirs = raw.dirs || raw.directions || null;
+  const grid = buildGrid(raw.shape, raw.az_axis || raw.azAxis, raw.el_axis || raw.elAxis, dirs);
+  const G = grid.na * grid.ne;
+  const methods = {}, order = [];
+  const src = raw.methods || raw.beamformers || null;
+  const unpack = (name, m) => {
+    let pat = m.pattern_db || m.beampattern_db || m.beampattern || m.pattern || null;
+    let freqs = numArr(m.freqs || raw.freqs || []);
+    if (pat && pat.length && !Array.isArray(pat[0])) {         // 容错：扁平 (F*G)
+      const F = freqs.length || (pat.length / G) | 0;
+      const t = []; for (let f = 0; f < F; f++) t.push(pat.slice(f * G, (f + 1) * G));
+      pat = t;
+    }
+    if (!pat || !pat.length) return;
+    if (!freqs.length) { freqs = []; for (let f = 0; f < pat.length; f++) freqs.push(f); }
+    const met = m.metrics || {};
+    methods[name] = {
+      name: name, freqs: freqs, pattern: pat.map(r => numArr(r)),
+      beamwidth: numArr(m.beamwidth_deg || m.beamwidth || []),
+      wng_db: numArr(met.wng_db || met.wng || []), di_db: numArr(met.di_db || met.di || []),
+      wng_min_db: met.wng_min_db, di_max_db: met.di_max_db, extra: m.extra || {}, error: m.error || null
+    };
+    order.push(name);
+  };
+  if (src && !Array.isArray(src)) {
+    Object.keys(src).forEach(k => unpack(k, src[k] || {}));
+  } else if (Array.isArray(src)) {
+    src.forEach((m, i) => unpack(m.method || m.name || ('method' + i), m));
+  }
+  if (!order.length) {                                          // 顶层直接给 pattern_db 的情况
+    unpack(raw.method || state.params.method || 'delay_sum', {
+      pattern_db: raw.pattern_db || raw.beampattern, freqs: raw.freqs,
+      metrics: raw.metrics || {}, beamwidth_deg: raw.beamwidth_deg
+    });
+  }
+  if (!order.length) return null;
+  return {
+    grid: grid, shape: grid.shape, freqs: methods[order[0]].freqs,
+    methods: methods, order: order, steer: raw.steer || raw.steer_dir || null,
+    geometry: raw.geometry ? normalizeGeometry(raw.geometry) : null, raw: raw
+  };
+}
+/** locate / imaging 的扁平数组 + shape → 场 */
+function normalizeField(raw, keys) {
+  if (!raw) return null;
+  const grid = buildGrid(raw.shape, raw.az_axis || raw.azAxis, raw.el_axis || raw.elAxis, raw.dirs);
+  const G = grid.na * grid.ne;
+  const fields = {};
+  keys.forEach(k => {
+    let a = raw[k];
+    if (!a) return;
+    if (Array.isArray(a) && a.length && Array.isArray(a[0])) {   // 嵌套 (ne,na) → 扁平
+      const t = []; a.forEach(row => row.forEach(v => t.push(+v))); a = t;
+    }
+    if (a.length !== G) {                                        // 长度不符：按 (1,N) 处理并提示
+      grid.ne = 1; grid.na = a.length; grid.shape = [1, a.length];
+      grid.dirs = a.map((_, i) => dirVec(grid.azAxis.length === a.length ? grid.azAxis[i] : 0, 0));
+      grid.azAxis = a.map((_, i) => -180 + 360 * i / Math.max(1, a.length - 1));
+      grid.elAxis = [0];
+    }
+    fields[k] = numArr(a);
+  });
+  const anyKey = Object.keys(fields)[0];
+  if (!anyKey) return null;
+  return { grid: grid, fields: fields, shape: grid.shape, method: raw.method || raw.methods || '', raw: raw };
+}
+function normalizeEnhance(raw) {
+  if (!raw) return null;
+  const pick = function () {
+    for (let i = 0; i < arguments.length; i++) { const v = raw[arguments[i]]; if (isNum(v)) return v; }
+    return null;
+  };
+  const curveRaw = raw.curve || raw.convergence || null;
+  const series = [];
+  let xs = null;
+  if (curveRaw) {
+    if (Array.isArray(curveRaw)) {
+      series.push({ name: raw.curve_label || '指标', values: numArr(curveRaw) });
+    } else {
+      const keys = Object.keys(curveRaw).filter(k => Array.isArray(curveRaw[k]));
+      const tKey = keys.filter(k => k === 't' || k === 'x' || k === 'frames' || k === 'iter')[0];
+      if (tKey) xs = numArr(curveRaw[tKey]);
+      keys.forEach(k => { if (k !== tKey) series.push({ name: k, values: numArr(curveRaw[k]) }); });
+    }
+  }
+  const len = series.length ? Math.max.apply(null, series.map(s => s.values.length)) : 0;
+  if (!xs) { xs = []; for (let i = 0; i < len; i++) xs.push(len > 1 ? i / (len - 1) : 0); }
+  return {
+    snr_in: pick('snr_in', 'snr_in_db', 'input_snr_db'), snr_out: pick('snr_out', 'snr_out_db', 'output_snr_db'),
+    si_sdr_in: pick('si_sdr_in', 'si_sdr_in_db'), si_sdr_out: pick('si_sdr_out', 'si_sdr_out_db'),
+    stoi_in: pick('stoi_proxy_in', 'intel_proxy_in'), stoi_out: pick('stoi_proxy_out', 'stoi_proxy', 'intel_proxy_out'),
+    snr_gain: pick('snr_gain_db', 'snr_improvement_db'), si_sdr_gain: pick('si_sdr_gain_db', 'si_sdr_improvement_db'),
+    audio_url: raw.audio_url || raw.enhanced_audio_url || null,
+    noisy_audio_url: raw.noisy_audio_url || raw.input_audio_url || null,
+    method: raw.method || '', fs: raw.fs || null, n_samples: raw.n_samples || null,
+    curve: { x: xs, series: series }, demo: !!raw.demo, raw: raw
+  };
+}
+
+/* ===== 7. Canvas 绘制原语（热力图一律走 ImageData / putImageData） ==========
+ * 为什么不用 fillRect 逐点上色：一张 500×500 的图就是 25 万次 fillRect，
+ * 浏览器每次都要走一遍光栅化 + 状态检查，几十毫秒起步；ImageData 直接写字节
+ * 是一次线性内存写，同样的图 5~15 ms。 */
+function fitCanvas(cv) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.max(1, cv.clientWidth), h = Math.max(1, cv.clientHeight);
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  return { ctx: ctx, w: w, h: h, dpr: dpr };
+}
+const OFFSCREENS = {};
+function offscreenFor(key, w, h) {
+  let c = OFFSCREENS[key];
+  if (!c) { c = document.createElement('canvas'); c.id = 'off:' + key; OFFSCREENS[key] = c; }
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  return c;
+}
+/** 在 (az,el) 上双线性采样场。周期轴按环绕处理，非周期轴 clamp。 */
+function sampleField(f, az, el) {
+  const na = f.na, ne = f.ne, map = f.map;
+  if (f.degenerateEl) {                                        // 单仰角环：只看方位
+    let ia = idxOfAxis(f.azAxis, az, f.periodicAz);
+    ia = clamp(Math.round(ia), 0, na - 1);
+    const v = map[ia];
+    return isFinite(v) ? v : NaN;
+  }
+  let fe = idxOfAxis(f.elAxis, el, false), fa = idxOfAxis(f.azAxis, az, f.periodicAz);
+  fe = clamp(fe, 0, ne - 1); fa = clamp(fa, 0, na - 1);
+  const e0 = Math.floor(fe), e1 = Math.min(ne - 1, e0 + 1), we = fe - e0;
+  const a0 = Math.floor(fa), a1 = Math.min(na - 1, a0 + 1), wa = fa - a0;
+  const v00 = map[e0 * na + a0], v01 = map[e0 * na + a1], v10 = map[e1 * na + a0], v11 = map[e1 * na + a1];
+  const v = (v00 * (1 - wa) + v01 * wa) * (1 - we) + (v10 * (1 - wa) + v11 * wa) * we;
+  return isFinite(v) ? v : NaN;
+}
+/** 值 → 轴上的浮点下标（支持递减轴与周期环绕）。 */
+function idxOfAxis(axis, v, periodic) {
+  const n = axis.length;
+  if (n === 1) return 0;
+  const step = (axis[n - 1] - axis[0]) / (n - 1);
+  if (Math.abs(step) < 1e-12) return 0;
+  let i = (v - axis[0]) / step;
+  if (periodic) { const span = n; i = ((i % span) + span) % span; }
+  return i;
+}
+/** 投影器：圆盘 / 矩形共用一套 az-el ↔ 像素 的映射，鼠标拾取与标注都靠它。 */
+function makeProj(mode, w, h, pad) {
+  pad = pad === undefined ? 18 : pad;
+  if (mode === 'rect') {
+    const x0 = pad + 26, y0 = pad, ww = Math.max(10, w - x0 - pad), hh = Math.max(10, h - y0 - pad - 12);
+    return {
+      kind: 'rect', x0: x0, y0: y0, w: ww, h: hh,
+      toXY(az, el) { return [x0 + (az + 180) / 360 * ww, y0 + (90 - el) / 180 * hh]; },
+      fromXY(x, y) {
+        if (x < x0 || x > x0 + ww || y < y0 || y > y0 + hh) return null;
+        return { az: -180 + (x - x0) / ww * 360, el: 90 - (y - y0) / hh * 180 };
+      }
+    };
+  }
+  const side = Math.max(20, Math.min(w - 2 * pad, h - 2 * pad));
+  const cx = w / 2, cy = h / 2, R = side / 2;
+  return {
+    kind: 'disk', cx: cx, cy: cy, R: R, side: side,
+    toXY(az, el) { const u = Math.cos(el * DEG) * Math.cos(az * DEG), v = Math.cos(el * DEG) * Math.sin(az * DEG); return [cx + u * R, cy - v * R]; },
+    fromXY(x, y) {
+      const u = (x - cx) / R, v = (cy - y) / R, r2 = u * u + v * v;
+      if (r2 > 1) return null;
+      const e = azElOfUV(u, v);
+      return { az: e.az, el: e.el, u: u, v: v, r: Math.sqrt(r2) };
+    }
+  };
+}
+/** 场 → ImageData 像素（圆盘投影）。返回离屏 canvas，主画布只负责 drawImage 缩放。 */
+function heatDisk(field, res, opt) {
+  const cv = offscreenFor('disk' + (opt.key || ''), res, res);
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(res, res);
+  const data = img.data, L = lut(opt.cmap || 'viridis');
+  const inv = 1 / Math.max(1e-9, opt.vmax - opt.vmin);
+  const NAN = opt.nanColor || [26, 31, 41], OUT = opt.outColor || [16, 19, 26];
+  const nanT = opt.nanT || 0.0;
+  for (let py = 0; py < res; py++) {
+    const v = 1 - 2 * (py + 0.5) / res;
+    for (let px = 0; px < res; px++) {
+      const u = 2 * (px + 0.5) / res - 1;
+      const o = (py * res + px) * 4, r2 = u * u + v * v;
+      if (r2 > 1) { data[o] = OUT[0]; data[o + 1] = OUT[1]; data[o + 2] = OUT[2]; data[o + 3] = 255; continue; }
+      const e = azElOfUV(u, v);
+      const val = sampleField(field, e.az, e.el);
+      if (!isFinite(val)) { data[o] = NAN[0]; data[o + 1] = NAN[1]; data[o + 2] = NAN[2]; data[o + 3] = 255; continue; }
+      let t = (val - opt.vmin) * inv; t = t < 0 ? 0 : (t > 1 ? 1 : t);
+      if (opt.gamma && opt.gamma !== 1) t = Math.pow(t, opt.gamma);
+      const i = ((t * 255) | 0) * 3;
+      data[o] = L[i]; data[o + 1] = L[i + 1]; data[o + 2] = L[i + 2]; data[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+/** 场 → ImageData 像素（az-el 矩形；只在用户显式切换时用，极点附近会有形变）。 */
+function heatRect(field, w, h, opt) {
+  const cv = offscreenFor('rect' + (opt.key || ''), w, h);
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  const data = img.data, L = lut(opt.cmap || 'viridis');
+  const inv = 1 / Math.max(1e-9, opt.vmax - opt.vmin);
+  for (let py = 0; py < h; py++) {
+    const el = 90 - 180 * (py + 0.5) / h;
+    for (let px = 0; px < w; px++) {
+      const az = -180 + 360 * (px + 0.5) / w;
+      const val = sampleField(field, az, el);
+      const o = (py * w + px) * 4;
+      if (!isFinite(val)) { data[o] = 26; data[o + 1] = 31; data[o + 2] = 41; data[o + 3] = 255; continue; }
+      let t = (val - opt.vmin) * inv; t = t < 0 ? 0 : (t > 1 ? 1 : t);
+      const i = ((t * 255) | 0) * 3;
+      data[o] = L[i]; data[o + 1] = L[i + 1]; data[o + 2] = L[i + 2]; data[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+/** 圆盘坐标网格：el 等值圈 + az 辐射线 + 刻度标签。 */
+function drawDiskFrame(ctx, p, opt) {
+  opt = opt || {};
+  ctx.save();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(160,190,230,.20)';
+  [0, 30, 60].forEach(elv => {                                 // r = cos(el)
+    const r = Math.cos(elv * DEG) * p.R;
+    ctx.beginPath(); ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2); ctx.stroke();
+  });
+  ctx.strokeStyle = 'rgba(160,190,230,.14)';
+  for (let az = 0; az < 360; az += 30) {
+    const a = az * DEG;
+    ctx.beginPath(); ctx.moveTo(p.cx, p.cy);
+    ctx.lineTo(p.cx + Math.cos(a) * p.R, p.cy - Math.sin(a) * p.R); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(190,215,245,.55)'; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.arc(p.cx, p.cy, p.R, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = 'rgba(200,220,245,.78)';
+  ctx.font = '10px ui-monospace,Menlo,monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  [[0, 'az 0°'], [90, '90°'], [180, '180°'], [-90, '-90°']].forEach(t => {
+    const a = t[0] * DEG, x = p.cx + Math.cos(a) * (p.R + 11), y = p.cy - Math.sin(a) * (p.R + 11);
+    ctx.fillText(t[1], x, y);
+  });
+  ctx.fillStyle = 'rgba(190,210,235,.85)';
+  ctx.font = '11px -apple-system,"PingFang SC",sans-serif';
+  ctx.fillText('boresight el=+90°', p.cx, p.cy);
+  ctx.fillStyle = 'rgba(150,175,205,.8)'; ctx.font = '10px ui-monospace,Menlo,monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('el 60°', p.cx + Math.cos(60 * DEG) * p.R * 0.5 * 1.0 + 2, p.cy - Math.cos(60 * DEG) * 0 + 0);
+  ctx.fillText('el 0°（阵面）', p.cx + 3, p.cy - p.R + 9);
+  ctx.restore();
+}
+/** 矩形坐标网格。 */
+function drawRectFrame(ctx, p, az0, az1, el0, el1) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(160,190,230,.22)'; ctx.lineWidth = 1;
+  ctx.fillStyle = 'rgba(200,220,245,.78)'; ctx.font = '10px ui-monospace,Menlo,monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let az = -180; az <= 180; az += 30) {
+    const x = p.x0 + (az - az0) / (az1 - az0) * p.w;
+    ctx.beginPath(); ctx.moveTo(x, p.y0); ctx.lineTo(x, p.y0 + p.h); ctx.stroke();
+    if (az % 60 === 0) ctx.fillText(String(az), x, p.y0 + p.h + 3);
+  }
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let el = -90; el <= 90; el += 30) {
+    const y = p.y0 + (el1 - el) / (el1 - el0) * p.h;
+    ctx.beginPath(); ctx.moveTo(p.x0, y); ctx.lineTo(p.x0 + p.w, y); ctx.stroke();
+    ctx.fillText(String(el), p.x0 - 4, y);
+  }
+  ctx.fillStyle = 'rgba(150,175,205,.9)';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillText('az°', p.x0 + p.w + 4, p.y0 + p.h + 3);
+  ctx.fillText('el°', 2, p.y0 - 12);
+  ctx.restore();
+}
+/** 主瓣区域（>= level 的连通块，从峰值洪泛）——用来画 -3 dB 等值线与估算角半径。 */
+function mainLobeRegion(field, peakIdx, level) {
+  const na = field.na, ne = field.ne, N = na * ne, map = field.map;
+  const mask = new Uint8Array(N), stack = [peakIdx];
+  if (!(map[peakIdx] >= level)) return { mask: mask, count: 0, maxAng: 0, peakIdx: peakIdx };
+  mask[peakIdx] = 1;
+  let count = 1;
+  const pk = field.dirs[peakIdx];
+  let maxAng = 0;
+  while (stack.length) {
+    const i = stack.pop(), ie = (i / na) | 0, ia = i - ie * na;
+    const nb = [];
+    if (ie > 0) nb.push(i - na);
+    if (ie < ne - 1) nb.push(i + na);
+    if (ia > 0) nb.push(i - 1); else if (field.periodicAz) nb.push(i + na - 1);
+    if (ia < na - 1) nb.push(i + 1); else if (field.periodicAz) nb.push(i - na + 1);
+    for (let k = 0; k < nb.length; k++) {
+      const j = nb[k];
+      if (!mask[j] && isFinite(map[j]) && map[j] >= level) {
+        mask[j] = 1; count++; stack.push(j);
+        const d = field.dirs[j];
+        const ang = Math.acos(clamp(d[0] * pk[0] + d[1] * pk[1] + d[2] * pk[2], -1, 1)) * RAD;
+        if (ang > maxAng) maxAng = ang;
+      }
+    }
+  }
+  return { mask: mask, count: count, maxAng: maxAng, peakIdx: peakIdx };
+}
+function argmaxIdx(arr) {
+  let bi = 0, bv = -Infinity;
+  for (let i = 0; i < arr.length; i++) { const v = arr[i]; if (isFinite(v) && v > bv) { bv = v; bi = i; } }
+  return bi;
+}
+/** 把主瓣区域的边界画成等值线（相邻格点跨越边界就画一条边）。 */
+function drawRegionEdges(ctx, proj, field, region, style) {
+  const na = field.na, ne = field.ne, mask = region.mask;
+  const azs = field.azAxis, els = field.elAxis;
+  const daz = na > 1 ? (azs[na - 1] - azs[0]) / (na - 1) : 1;
+  const dele = ne > 1 ? (els[ne - 1] - els[0]) / (ne - 1) : 1;
+  ctx.save();
+  ctx.strokeStyle = style || 'rgba(255,255,255,.85)';
+  ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  const seg = (az1, el1, az2, el2) => {
+    const a = proj.toXY(az1, el1), b = proj.toXY(az2, el2);
+    ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+  };
+  for (let ie = 0; ie < ne; ie++) for (let ia = 0; ia < na; ia++) {
+    const i = ie * na + ia;
+    if (!mask[i]) continue;
+    const a0 = azs[ia] - daz / 2, a1 = azs[ia] + daz / 2;
+    const e0 = els[ie] - dele / 2, e1 = els[ie] + dele / 2;
+    if (ie === 0 || !mask[i - na]) seg(a0, e0, a1, e0);
+    if (ie === ne - 1 || !mask[i + na]) seg(a0, e1, a1, e1);
+    if (ia === 0 || !mask[i - 1]) seg(a0, e0, a0, e1);
+    if (ia === na - 1 || !mask[i + 1]) seg(a1, e0, a1, e1);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+/** 半透明填充主瓣区域（逐格画小四边形；格点数很少，不影响性能）。 */
+function fillRegion(ctx, proj, field, region, style) {
+  const na = field.na, ne = field.ne, mask = region.mask;
+  const azs = field.azAxis, els = field.elAxis;
+  const daz = na > 1 ? (azs[na - 1] - azs[0]) / (na - 1) : 1;
+  const dele = ne > 1 ? (els[ne - 1] - els[0]) / (ne - 1) : 1;
+  ctx.save(); ctx.fillStyle = style || 'rgba(255,255,255,.10)';
+  for (let ie = 0; ie < ne; ie++) for (let ia = 0; ia < na; ia++) {
+    if (!mask[ie * na + ia]) continue;
+    const a0 = azs[ia] - daz / 2, a1 = azs[ia] + daz / 2;
+    const e0 = els[ie] - dele / 2, e1 = els[ie] + dele / 2;
+    const p1 = proj.toXY(a0, e0), p2 = proj.toXY(a1, e0), p3 = proj.toXY(a1, e1), p4 = proj.toXY(a0, e1);
+    ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]);
+    ctx.lineTo(p3[0], p3[1]); ctx.lineTo(p4[0], p4[1]); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+/** 方向标记（真值 / 估计 / 指向）。圆盘投影下 el<0 会镜像到前半空间，用虚线区分。 */
+function drawMarker(ctx, proj, az, el, opt) {
+  const p = proj.toXY(az, el);
+  const mirrored = (proj.kind === 'disk' && el < -1e-9);
+  ctx.save();
+  ctx.strokeStyle = opt.color || '#fff'; ctx.fillStyle = opt.color || '#fff';
+  ctx.lineWidth = opt.lw || 1.6;
+  ctx.setLineDash(mirrored ? [3, 3] : (opt.dash || []));
+  const s = opt.size || 7;
+  ctx.beginPath();
+  if (opt.shape === 'cross') {
+    ctx.moveTo(p[0] - s, p[1]); ctx.lineTo(p[0] + s, p[1]);
+    ctx.moveTo(p[0], p[1] - s); ctx.lineTo(p[0], p[1] + s);
+  } else if (opt.shape === 'circle') {
+    ctx.arc(p[0], p[1], s * 0.62, 0, Math.PI * 2);
+  } else if (opt.shape === 'square') {
+    ctx.rect(p[0] - s * 0.6, p[1] - s * 0.6, s * 1.2, s * 1.2);
+  } else {
+    ctx.moveTo(p[0] - s, p[1] - s); ctx.lineTo(p[0] + s, p[1] + s);
+    ctx.moveTo(p[0] + s, p[1] - s); ctx.lineTo(p[0] - s, p[1] + s);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  if (opt.label) {
+    ctx.font = '11px -apple-system,"PingFang SC",sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+    const txt = opt.label + (mirrored ? '（el<0，镜像）' : '');
+    const wpx = ctx.measureText(txt).width;
+    ctx.fillStyle = 'rgba(8,11,16,.72)';
+    ctx.fillRect(p[0] + s + 1, p[1] - 15, wpx + 5, 14);
+    ctx.fillStyle = opt.color || '#fff';
+    ctx.fillText(txt, p[0] + s + 3, p[1] - 3);
+  }
+  ctx.restore();
+  return p;
+}
+/** 简易折线图（增强收敛曲线）。 */
+function drawCurve(cv, xs, series, opt) {
+  opt = opt || {};
+  const g = fitCanvas(cv);
+  if (!series.length || !xs.length) { g.ctx.fillStyle = '#8b98ab'; g.ctx.font = '12px sans-serif'; g.ctx.fillText('无曲线数据', 10, 20); return; }
+  const padL = 42, padR = 10, padT = 12, padB = 22;
+  const w = g.w - padL - padR, h = g.h - padT - padB;
+  let vmin = Infinity, vmax = -Infinity, xmin = Infinity, xmax = -Infinity;
+  series.forEach(s => s.values.forEach(v => { if (isFinite(v)) { if (v < vmin) vmin = v; if (v > vmax) vmax = v; } }));
+  xs.forEach(v => { if (isFinite(v)) { if (v < xmin) xmin = v; if (v > xmax) xmax = v; } });
+  if (!isFinite(vmin)) { vmin = 0; vmax = 1; }
+  if (vmax - vmin < 1e-9) { vmax += 1; vmin -= 1; }
+  const pad = (vmax - vmin) * 0.08; vmin -= pad; vmax += pad;
+  const X = v => padL + (xmax - xmin > 1e-12 ? (v - xmin) / (xmax - xmin) : 0.5) * w;
+  const Y = v => padT + h - (v - vmin) / (vmax - vmin) * h;
+  const ctx = g.ctx;
+  ctx.fillStyle = '#0b0f16'; ctx.fillRect(0, 0, g.w, g.h);
+  ctx.strokeStyle = 'rgba(160,190,230,.18)'; ctx.lineWidth = 1;
+  ctx.fillStyle = '#7b8798'; ctx.font = '10px ui-monospace,Menlo,monospace';
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 4; i++) {
+    const v = vmin + (vmax - vmin) * i / 4, y = Y(v);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + w, y); ctx.stroke();
+    ctx.fillText(v.toFixed(1), padL - 4, y);
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('归一化迭代 / 帧', padL + w / 2, padT + h + 5);
+  const colors = ['#ff6b6b', '#4ea1ff', '#f2b134', '#35d07f', '#c58cff', '#4fd6d6'];
+  series.forEach((s, i) => {
+    ctx.strokeStyle = opt.colors && opt.colors[i] ? opt.colors[i] : colors[i % colors.length];
+    ctx.lineWidth = 1.8; ctx.beginPath();
+    let started = false;
+    for (let k = 0; k < s.values.length; k++) {
+      const v = s.values[k], xv = xs[k] === undefined ? k : xs[k];
+      if (!isFinite(v)) continue;
+      const x = X(xv), y = Y(v);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = ctx.strokeStyle; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText(s.name, padL + 4 + i * 74, padT + 2);
+  });
+}
+/** 指标对比条（输入 vs 输出）。 */
+function drawBars(cv, groups, opt) {
+  opt = opt || {};
+  const g = fitCanvas(cv);
+  const ctx = g.ctx;
+  ctx.fillStyle = '#0b0f16'; ctx.fillRect(0, 0, g.w, g.h);
+  const padL = 8, padT = 18, padB = 20;
+  const rowH = Math.max(20, (g.h - padT - padB) / Math.max(1, groups.length));
+  const labelW = 74;
+  const all = [];
+  groups.forEach(gr => gr.bars.forEach(b => { if (isNum(b.value)) all.push(b.value); }));
+  if (!all.length) { ctx.fillStyle = '#8b98ab'; ctx.font = '12px sans-serif'; ctx.fillText('无指标数据（demo 模式只有音频）', 10, 22); return; }
+  let vmin = Math.min.apply(null, all), vmax = Math.max.apply(null, all);
+  if (vmax - vmin < 1e-6) { vmax = vmin + 1; }
+  const lo = Math.min(vmin, 0) - Math.abs(vmax - Math.min(vmin, 0)) * 0.15;
+  const hi = vmax + Math.abs(vmax - lo) * 0.12;
+  const plotW = g.w - labelW - 60;
+  const X = v => labelW + (v - lo) / (hi - lo) * plotW;
+  groups.forEach((gr, gi) => {
+    const y0 = padT + gi * rowH;
+    ctx.fillStyle = '#9fb0c6'; ctx.font = '11px ui-monospace,Menlo,monospace';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(gr.name, 4, y0 + rowH / 2);
+    gr.bars.forEach((b, bi) => {
+      const bh = Math.max(5, rowH / (gr.bars.length + 1) - 2);
+      const y = y0 + (bi + 0.6) * (rowH / (gr.bars.length + 1));
+      const x0 = X(Math.min(0, isNum(b.value) ? b.value : 0)), x1 = X(Math.max(0, isNum(b.value) ? b.value : 0));
+      ctx.fillStyle = b.color || '#4ea1ff';
+      ctx.globalAlpha = 0.88;
+      ctx.fillRect(Math.min(x0, x1), y, Math.max(1.5, Math.abs(x1 - x0)), bh);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#dbe6f5'; ctx.font = '10.5px ui-monospace,Menlo,monospace';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(b.label + ' ' + (isNum(b.value) ? b.value.toFixed(2) : '–') + (b.unit || ''), Math.max(x0, x1) + 4, y + bh / 2);
+    });
+  });
+  const xz = X(0);
+  ctx.strokeStyle = 'rgba(200,220,245,.5)'; ctx.beginPath();
+  ctx.moveTo(xz, padT - 6); ctx.lineTo(xz, g.h - padB + 8); ctx.stroke();
+  ctx.fillStyle = '#7b8798'; ctx.font = '10px ui-monospace,Menlo,monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  ctx.fillText('0' + (opt.unit || ' dB'), xz, padT - 8);
+}
+
+/* ===== 8. 视图 =========================================================== */
+
+/* ---- 8.0 状态栏 / 错误日志 ---- */
+function errorCount() { return state.log.filter(l => l.indexOf('错误') > 0).length; }
+/**
+ * 底栏状态。为什么错误提示不会被后续成功消息"洗掉"：本会话只要出过错，
+ * 后续普通消息就降级成 warn 并附带错误计数，避免用户以为一切正常。
+ */
+function setStatus(msg, level) {
+  const n = $('#st-msg');
+  const errs = errorCount();
+  let cls = level || '', text = msg;
+  if (!level && errs > 0) { cls = 'warn'; text = msg + ' ⚠ 本会话有 ' + errs + ' 条错误（见右下“错误日志”）'; }
+  n.textContent = text;
+  n.className = cls;
+}
+function logLine(msg, level) {
+  const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  state.log.push('[' + t + '] ' + (level === 'err' ? '错误 ' : level === 'warn' ? '警告 ' : '') + msg);
+  if (state.log.length > 300) state.log.shift();
+  $('#st-errcount').textContent = String(state.log.filter(l => l.indexOf('错误') > 0).length);
+  const lp = $('#logpanel');
+  if (!lp.classList.contains('hidden')) lp.textContent = state.log.slice(-80).join('\n');
+}
+function reportError(where, e) {
+  const msg = where + '失败：' + ((e && (e.zh || e.message)) || e);
+  setStatus(msg, 'err');
+  logLine(msg, 'err');
+}
+function reportWarn(msg) { setStatus(msg, 'warn'); logLine(msg, 'warn'); }
+function setBusy(view, delta) {
+  state.busy[view] = Math.max(0, (state.busy[view] || 0) + delta);
+  const anyBusy = Object.keys(state.busy).some(k => state.busy[k] > 0);
+  $('#st-time').innerHTML = anyBusy ? '<span class="spin"></span> 计算中…' : (state.lastMs ? ('上次请求 ' + state.lastMs + ' ms') : '');
+}
+
+/* ---- 8.1 数据获取：在线走后端，离线走内置 mock ---- */
+async function callApi(label, liveFn, mockFn, body) {
+  if (state.online) {
+    try {
+      const t0 = nowMs();
+      const r = await liveFn(body);
+      state.lastMs = Math.round(nowMs() - t0);
+      return r;
+    } catch (e) {
+      // 后端在并行开发中：某个端点还没实现时用内置 mock 顶替，但要明确警告
+      if (e && (e.status === 404 || e.status === 501 || e.status === 405)) {
+        reportWarn(label + '：后端未实现该端点（HTTP ' + e.status + '），已用内置 mock 数据顶替');
+        return mockFn(body);
+      }
+      throw new Error(label + '：' + (e.zh || e.message));
+    }
+  }
+  await new Promise(r => setTimeout(r, 40));       // 让出主线程，保持 UI 响应
+  return mockFn(body);
+}
+async function ensureGeometry(force) {
+  if (state.geometry && !force) return state.geometry;
+  const P = state.params;
+  const body = { preset: P.preset || null, kind: P.kind, params: { n_mics: P.n_mics, radius: P.radius, spacing: P.spacing }, name: P.preset || P.kind };
+  const raw = await callApi('阵列设计 /api/array/design', API.design, MOCK.designArray, body);
+  const g = normalizeGeometry(raw);
+  if (!g) throw new Error('阵列设计：响应里没有可用的 mics');
+  state.geometry = g;
+  state.geomDirty = false;
+  updateMetricsStrip(); ArrayView.paint(); HistView.paint();
+  return g;
+}
+/** 前端本地重算几何指标（拖拽阵元后立刻更新，不必等后端）。 */
+function recomputeGeometryLocal() {
+  const g = state.geometry;
+  if (!g) return;
+  const met = GEOM.metrics(g.mics, state.params.c);
+  g.meta.n_mics = met.n_mics; g.meta.aperture = met.aperture;
+  g.meta.min_spacing = met.min_spacing;
+  g.meta.grating_free_freq = isFinite(met.grating_free_freq) ? met.grating_free_freq : null;
+  g.meta.redundancy = met.redundancy;
+  g.raw = { name: g.name, kind: g.kind, mics: g.mics, meta: g.meta, params: g.params };
+}
+function updateMetricsStrip() {
+  const g = state.geometry;
+  if (!g) return;
+  const m = g.meta;
+  $('#m-nmics').textContent = m.n_mics;
+  $('#m-aperture').textContent = fmt(m.aperture, 3);
+  $('#m-minspacing').textContent = fmt(m.min_spacing, 4);
+  $('#m-grating').textContent = isNum(m.grating_free_freq) ? Math.round(m.grating_free_freq) : '∞';
+  $('#m-redundancy').textContent = m.redundancy ? fmt(m.redundancy.redundancy, 3) : '–';
+  $('#array-kind').textContent = state.geomDirty ? '自定义' : (g.name || g.kind);
+  $('#array-kind').className = 'tag';
+}
+
+/* ---- 8.2 阵型编辑器（左栏） ---- */
+const ArrayView = {
+  cv: null, zoom: 1, panX: 0, panY: 0, drag: null, down: null,
+  init() {
+    this.cv = $('#cv-array');
+    const cv = this.cv;
+    cv.addEventListener('mousedown', e => this.onDown(e));
+    window.addEventListener('mousemove', e => this.onMove(e));
+    window.addEventListener('mouseup', e => this.onUp(e));
+    cv.addEventListener('wheel', e => { e.preventDefault(); this.onWheel(e); }, { passive: false });
+    cv.addEventListener('dblclick', () => { this.zoom = 1; this.panX = 0; this.panY = 0; this.paint(); });
+    cv.addEventListener('contextmenu', e => e.preventDefault());
+    cv.addEventListener('mouseleave', () => { state.arr.hover = -1; this.paint(); });
+  },
+  /** 世界(米) ↔ 画布(px)。阵列质心在原点，所以画布中心 = 阵列中心 + 平移。 */
+  proj() {
+    const w = this.cv.clientWidth || 300, h = this.cv.clientHeight || 260;
+    const g = state.geometry;
+    let maxR = 0.05;
+    if (g) g.mics.forEach(m => { maxR = Math.max(maxR, Math.hypot(m[0], m[1])); });
+    const fit = 0.40 * Math.min(w, h) / maxR;
+    const s = fit * this.zoom;
+    const cx = w / 2 + this.panX, cy = h / 2 + this.panY;
+    return { w: w, h: h, s: s, cx: cx, cy: cy, toPx: (x, y) => [cx + x * s, cy - y * s], toWorld: (px, py) => [(px - cx) / s, (cy - py) / s] };
+  },
+  hitTest(px, py) {
+    const g = state.geometry; if (!g) return -1;
+    const p = this.proj();
+    let best = -1, bd = 11;
+    g.mics.forEach((m, i) => {
+      const q = p.toPx(m[0], m[1]);
+      const d = Math.hypot(q[0] - px, q[1] - py);
+      if (d < bd) { bd = d; best = i; }
+    });
+    return best;
+  },
+  localXY(e) {
+    const r = this.cv.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
+  },
+  onDown(e) {
+    const xy = this.localXY(e);
+    if (e.button === 0) {
+      const i = this.hitTest(xy[0], xy[1]);
+      if (i >= 0) {
+        const p = this.proj(), w = p.toWorld(xy[0], xy[1]), m = state.geometry.mics[i];
+        this.drag = { i: i, dx: m[0] - w[0], dy: m[1] - w[1] };
+        state.arr.hover = i;
+        this.paint();
+        e.preventDefault();
+        return;
+      }
+    }
+    this.down = { x: xy[0], y: xy[1], panX: this.panX, panY: this.panY };
+    e.preventDefault();
+  },
+  onMove(e) {
+    const xy = this.localXY(e);
+    if (this.drag && state.geometry) {
+      const p = this.proj(), w = p.toWorld(xy[0], xy[1]);
+      const m = state.geometry.mics[this.drag.i];
+      // 1 mm 栅格吸附：仿真里没意义的更小位移只会让几何数变脏
+      m[0] = Math.round((w[0] + this.drag.dx) * 1000) / 1000;
+      m[1] = Math.round((w[1] + this.drag.dy) * 1000) / 1000;
+      m[2] = 0;                                        // CONTRACT 第 1 节：阵元留在 xy 平面
+      state.geomDirty = true;
+      recomputeGeometryLocal(); updateMetricsStrip(); HistView.paint(); this.paint();
+      return;
+    }
+    if (this.down) {
+      this.panX = this.down.panX + (xy[0] - this.down.x);
+      this.panY = this.down.panY + (xy[1] - this.down.y);
+      this.paint();
+      return;
+    }
+    const hov = this.hitTest(xy[0], xy[1]);
+    if (hov !== state.arr.hover) { state.arr.hover = hov; this.paint(); }
+  },
+  onUp() {
+    if (this.drag) {
+      this.drag = null;
+      state.geometry.name = '自定义'; state.geometry.kind = 'custom';
+      updateMetricsStrip();
+      logLine('阵元被手动拖拽 → 阵列变为“自定义”，已本地重算几何指标');
+      scheduleRun('geometry');
+    }
+    this.down = null;
+  },
+  onWheel(e) {
+    // 以光标为不动点缩放：先记下光标处的世界坐标，缩放后反解平移量
+    const xy = this.localXY(e), p = this.proj(), w = p.toWorld(xy[0], xy[1]);
+    this.zoom = clamp(this.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), 0.15, 60);
+    const s = (p.s / this.zoom) * this.zoom;       // = 新的 px/米
+    this.panX = xy[0] - p.w / 2 - w[0] * s;
+    this.panY = xy[1] - p.h / 2 + w[1] * s;
+    this.paint();
+  },
+  paint() {
+    if (!this.cv || !this.cv.clientWidth) return;
+    const g = fitCanvas(this.cv), ctx = g.ctx, G = state.geometry;
+    ctx.fillStyle = '#0b0f16'; ctx.fillRect(0, 0, g.w, g.h);
+    if (!G) { ctx.fillStyle = '#8b98ab'; ctx.font = '12px sans-serif'; ctx.fillText('无阵列数据', 10, 20); return; }
+    const p = this.proj();
+    // 米制网格：根据缩放选一个"整"的步长
+    const steps = [0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1];
+    let step = steps[steps.length - 1];
+    for (let i = 0; i < steps.length; i++) if (steps[i] * p.s > 34) { step = steps[i]; break; }
+    ctx.strokeStyle = 'rgba(120,150,190,.13)'; ctx.lineWidth = 1;
+    const x0 = Math.ceil(p.toWorld(0, 0)[0] / step) * step, x1 = p.toWorld(g.w, 0)[0];
+    const y0 = Math.ceil(p.toWorld(0, g.h)[1] / step) * step, y1 = p.toWorld(0, 0)[1];
+    for (let x = x0; x <= x1; x += step) {
+      const q = p.toPx(x, 0);
+      ctx.beginPath(); ctx.moveTo(q[0], 0); ctx.lineTo(q[0], g.h); ctx.stroke();
+    }
+    for (let y = y0; y <= y1; y += step) {
+      const q = p.toPx(0, y);
+      ctx.beginPath(); ctx.moveTo(0, q[1]); ctx.lineTo(g.w, q[1]); ctx.stroke();
+    }
+    // 口径圆：以质心为圆心、最大阵元间距为直径
+    const ap = G.meta.aperture || 0;
+    if (ap > 0) {
+      const c = p.toPx(0, 0);
+      ctx.strokeStyle = 'rgba(78,161,255,.42)'; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(c[0], c[1], ap / 2 * p.s, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(120,170,230,.75)'; ctx.font = '10px ui-monospace,Menlo,monospace';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillText('口径圆 Ø' + fmt(ap, 3) + ' m', c[0] + ap / 2 * p.s * 0.7, c[1] - ap / 2 * p.s - 13);
+    }
+    // 坐标轴 + 原点
+    const o = p.toPx(0, 0);
+    ctx.strokeStyle = 'rgba(160,190,230,.45)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(o[0] - 12, o[1]); ctx.lineTo(o[0] + 12, o[1]);
+    ctx.moveTo(o[0], o[1] - 12); ctx.lineTo(o[0], o[1] + 12); ctx.stroke();
+    ctx.fillStyle = 'rgba(150,180,215,.8)'; ctx.font = '10px ui-monospace,Menlo,monospace';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+    ctx.fillText('+x', o[0] + 14, o[1] - 2);
+    ctx.fillText('+y', o[0] + 3, o[1] - 14);
+    // 阵元
+    G.mics.forEach((m, i) => {
+      const q = p.toPx(m[0], m[1]);
+      const hot = (state.arr.hover === i) || (this.drag && this.drag.i === i);
+      ctx.beginPath(); ctx.arc(q[0], q[1], hot ? 6.5 : 5, 0, Math.PI * 2);
+      ctx.fillStyle = hot ? '#f2b134' : '#4ea1ff';
+      ctx.fill();
+      ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgba(240,248,255,.85)'; ctx.stroke();
+      if (G.mics.length <= 40) {
+        ctx.fillStyle = 'rgba(200,220,245,.72)'; ctx.font = '9px ui-monospace,Menlo,monospace';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(i), q[0] + 7, q[1] - 6);
+      }
+    });
+    // 比例尺
+    const barM = step * 2, barPx = barM * p.s;
+    ctx.strokeStyle = 'rgba(220,235,255,.8)'; ctx.lineWidth = 1.4; ctx.beginPath();
+    ctx.moveTo(10, g.h - 12); ctx.lineTo(10 + barPx, g.h - 12);
+    ctx.moveTo(10, g.h - 16); ctx.lineTo(10, g.h - 8);
+    ctx.moveTo(10 + barPx, g.h - 16); ctx.lineTo(10 + barPx, g.h - 8); ctx.stroke();
+    ctx.fillStyle = 'rgba(220,235,255,.85)'; ctx.font = '10px ui-monospace,Menlo,monospace';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+    ctx.fillText(barM >= 1 ? barM + ' m' : (barM * 1000).toFixed(0) + ' mm', 12, g.h - 17);
+    ctx.fillStyle = 'rgba(140,165,195,.75)';
+    ctx.textAlign = 'right';
+    ctx.fillText('xy 平面 (z=0) · 缩放 ×' + this.zoom.toFixed(2), g.w - 6, g.h - 5);
+    // 悬停信息
+    if (state.arr.hover >= 0 && G.mics[state.arr.hover]) {
+      const m = G.mics[state.arr.hover];
+      ctx.fillStyle = 'rgba(242,177,52,.95)'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.font = '10.5px ui-monospace,Menlo,monospace';
+      ctx.fillText('#' + state.arr.hover + '  (' + m[0].toFixed(3) + ', ' + m[1].toFixed(3) + ', 0) m', 8, 6);
+    }
+  }
+};
+
+/* ---- 8.3 间距直方图 ---- */
+const HistView = {
+  init() { this.cv = $('#cv-hist'); },
+  paint() {
+    if (!this.cv || !this.cv.clientWidth) return;
+    const g = fitCanvas(this.cv), ctx = g.ctx, G = state.geometry;
+    ctx.fillStyle = '#0b0f16'; ctx.fillRect(0, 0, g.w, g.h);
+    const red = G && G.meta.redundancy;
+    const hist = red && red.histogram ? red.histogram : [];
+    if (!hist.length) { ctx.fillStyle = '#8b98ab'; ctx.font = '11px sans-serif'; ctx.fillText('无直方图数据', 8, 16); return; }
+    const padL = 26, padB = 16, padT = 6;
+    const w = g.w - padL - 6, h = g.h - padB - padT;
+    const mx = Math.max.apply(null, hist.map(b => b.count)) || 1;
+    const bw = w / hist.length;
+    hist.forEach((b, i) => {
+      const bh = b.count / mx * h;
+      const t = b.count / mx;
+      ctx.fillStyle = cssColor('viridis', 0.15 + 0.85 * t);
+      ctx.fillRect(padL + i * bw + 0.4, padT + h - bh, Math.max(1, bw - 0.8), bh);
+    });
+    ctx.strokeStyle = 'rgba(160,190,230,.3)'; ctx.beginPath();
+    ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + h); ctx.lineTo(padL + w, padT + h); ctx.stroke();
+    ctx.fillStyle = '#7b8798'; ctx.font = '10px ui-monospace,Menlo,monospace';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(mx), padL - 3, padT + 4);
+    ctx.fillText('0', padL - 3, padT + h - 4);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    const dmax = hist[hist.length - 1].d * 2;
+    ctx.fillText('0', padL, padT + h + 3);
+    ctx.textAlign = 'right';
+    ctx.fillText((dmax * 1000).toFixed(0) + ' mm', padL + w, padT + h + 3);
+    $('#hist-note').innerHTML = red
+      ? ('阵元对数 <b class="mono">' + red.n_pairs + '</b>，唯一间距 <b class="mono">' + red.n_unique +
+        '</b>，冗余度 <b class="mono">' + fmt(red.redundancy, 3) + '</b>（1.0 = 完全非冗余）' +
+        (red.coincident_pairs ? '，重合阵元对 <b>' + red.coincident_pairs + '</b>' : ''))
+      : '–';
+  }
+};
+
+/* ---- 8.4 波束图（u-v 圆盘 / az-el 矩形） ---- */
+const BeamView = {
+  heat: null, heatKey: '',
+  method() { const s = $('#bf-method'); return s.value || state.params.method; },
+  freqIdx() { return clamp(+$('#bf-fidx').value || 0, 0, Math.max(0, (state.data.beam ? state.data.beam.freqs.length : 1) - 1)); },
+  /** 当前频率的一行 → 场对象（含轴信息），渲染器与采样器共用。 */
+  field() {
+    const B = state.data.beam; if (!B) return null;
+    const m = B.methods[this.method()]; if (!m || !m.pattern) return null;
+    const f = clamp(this.freqIdx(), 0, m.pattern.length - 1);
+    const row = m.pattern[f];
+    return {
+      map: row, na: B.grid.na, ne: B.grid.ne, azAxis: B.grid.azAxis, elAxis: B.grid.elAxis,
+      dirs: B.grid.dirs, periodicAz: B.grid.periodicAz, degenerateEl: B.grid.degenerateEl
+    };
+  },
+  paint() {
+    const cv = $('#cv-beam'); if (!cv || !cv.clientWidth) return;
+    const g = fitCanvas(cv), ctx = g.ctx;
+    ctx.fillStyle = '#0b0f16'; ctx.fillRect(0, 0, g.w, g.h);
+    const B = state.data.beam;
+    if (!B) { ctx.fillStyle = '#8b98ab'; ctx.font = '12px sans-serif'; ctx.fillText('还没有波束图数据：点“运行”或等待自动计算', 12, 24); return; }
+    const fld = this.field();
+    if (!fld) { ctx.fillStyle = '#ff8080'; ctx.font = '12px sans-serif'; ctx.fillText('方法 ' + this.method() + ' 没有 pattern_db 数据', 12, 24); return; }
+    const f = this.freqIdx();
+    const dyn = +$('#bf-range').value;
+    const peak = Math.max.apply(null, fld.map.filter(isFinite));
+    const vmax = peak, vmin = peak - dyn;
+    const mode = $('#bf-proj').value;
+    const p = makeProj(mode, g.w, g.h, 16);
+    const key = 'beam:' + mode + ':' + this.method() + ':' + f + ':' + dyn + ':' + g.w + 'x' + g.h + ':' + B.grid.na + 'x' + B.grid.ne;
+    if (this.heatKey !== key) {
+      this.heat = (mode === 'disk')
+        ? heatDisk(fld, clamp(Math.round(p.kind === 'disk' ? p.side : Math.min(g.w, g.h)), 64, 620), { key: 'beam', cmap: 'viridis', vmin: vmin, vmax: vmax })
+        : heatRect(fld, clamp(Math.round(p.w), 32, 900), clamp(Math.round(p.h), 32, 900), { key: 'beam', cmap: 'viridis', vmin: vmin, vmax: vmax });
+      this.heatKey = key;
+    }
+    ctx.imageSmoothingEnabled = true;
+    if (mode === 'disk') ctx.drawImage(this.heat, p.cx - p.side / 2, p.cy - p.side / 2, p.side, p.side);
+    else ctx.drawImage(this.heat, p.x0, p.y0, p.w, p.h);
+    // 网格
+    if (mode === 'disk') drawDiskFrame(ctx, p); else drawRectFrame(ctx, p, -180, 180, -90, 90);
+    // -3 dB 主瓣区域：等值线 + 半透明填充
+    const pkIdx = argmaxIdx(fld.map);
+    const reg = mainLobeRegion(fld, pkIdx, peak - 3);
+    fillRegion(ctx, p, fld, reg, 'rgba(255,255,255,.10)');
+    drawRegionEdges(ctx, p, fld, reg, 'rgba(255,255,255,.85)');
+    // 标记：指向 / 真值 / 峰值
+    const steer = B.steer || [state.params.source.az, state.params.source.el];
+    drawMarker(ctx, p, steer[0], steer[1], { color: '#f2b134', shape: 'cross', label: '指向 ' + fmt(steer[0], 0) + '°/' + fmt(steer[1], 0) + '°' });
+    const pd = azElOf(fld.dirs[pkIdx]);
+    drawMarker(ctx, p, pd.az, pd.el, { color: '#35d07f', shape: 'circle', label: '峰值 ' + fmt(pd.az, 0) + '°/' + fmt(pd.el, 0) + '°', size: 5 });
+    // 悬停十字线
+    const hv = state.hover.beam;
+    if (hv) {
+      const q = p.toXY(hv.az, hv.el);
+      ctx.strokeStyle = 'rgba(110,220,255,.85)'; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
+      ctx.beginPath(); ctx.moveTo(q[0] - 8, q[1]); ctx.lineTo(q[0] + 8, q[1]);
+      ctx.moveTo(q[0], q[1] - 8); ctx.lineTo(q[0], q[1] + 8); ctx.stroke(); ctx.setLineDash([]);
+    }
+    // 图例
+    drawColorbar($('#bf-legend'), 'viridis', vmin, vmax, 'dB');
+    $('#bf-legend-lab').textContent = fmt(vmin, 1) + ' … ' + fmt(vmax, 1) + ' dB';
+    // 标注行
+    const mm = B.methods[this.method()];
+    const bw = mm.beamwidth && isNum(mm.beamwidth[f]) ? fmt(mm.beamwidth[f], 1) + '°' : '未提供';
+    const wng = mm.wng_db && isNum(mm.wng_db[f]) ? fmt(mm.wng_db[f], 1) + ' dB' : '–';
+    const di = mm.di_db && isNum(mm.di_db[f]) ? fmt(mm.di_db[f], 1) + ' dB' : '–';
+    const mirrorNote = (fld.elAxis[0] < -1e-6)
+      ? '<span class="pill warn">网格含 el&lt;0（后半空间）</span> 圆盘只呈现前半空间，后半空间按 |el| 镜像折叠（平面阵前后模糊）'
+      : '';
+    $('#bf-annot').innerHTML =
+      '<b>' + this.method() + '</b> @ <span class="mono">' + fmt(B.freqs[f], 0) + ' Hz</span> ｜ ' +
+      '-3dB 主瓣宽度（后端 <span class="mono">beamwidth_deg</span>）：<b class="mono">' + bw + '</b> ｜ ' +
+      '本图 -3 dB 区域角半径：<b class="mono">' + fmt(reg.maxAng, 1) + '°</b>（' + reg.count + ' 格）｜ ' +
+      'WNG <span class="mono">' + wng + '</span> ｜ DI <span class="mono">' + di + '</span>' +
+      (fld.degenerateEl ? ' ｜ <span class="pill warn">网格退化：仅单个仰角环 el=' + fmt(fld.elAxis[0], 0) + '°，圆盘按方位着色</span>' : '') +
+      (mirrorNote ? '<br>' + mirrorNote : '');
+    $('#bf-info').textContent = B.order.length + ' 个方法可选 · 网格 ' + B.shape[1] + '×' + B.shape[0];
+  },
+  /** 鼠标拾取：像素 → (az,el) → 该方向上的 dB 值 */
+  hoverAt(e) {
+    const cv = $('#cv-beam'); if (!cv || !state.data.beam) return;
+    const r = cv.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    const p = makeProj($('#bf-proj').value, cv.clientWidth, cv.clientHeight, 16);
+    const hit = p.fromXY(x, y);
+    const tip = $('#tooltip');
+    if (!hit) { state.hover.beam = null; tip.classList.add('hidden'); this.paint(); return; }
+    const fld = this.field();
+    let val = isFinite(sampleField(fld, hit.az, hit.el)) ? sampleField(fld, hit.az, hit.el) : NaN;
+    // 后半空间不可分辨：同时取镜像方向，报较大者，并注明
+    let mirrorVal = NaN;
+    if (fld.elAxis[0] < -1e-6) { mirrorVal = sampleField(fld, hit.az, -hit.el); }
+    const shown = isFinite(mirrorVal) ? Math.max(val, mirrorVal) : val;
+    state.hover.beam = hit;
+    tip.classList.remove('hidden');
+    tip.style.left = Math.min(window.innerWidth - 190, e.clientX + 12) + 'px';
+    tip.style.top = (e.clientY + 14) + 'px';
+    tip.innerHTML = 'az ' + hit.az.toFixed(1) + '°  el ' + hit.el.toFixed(1) + '°<br>' +
+      (p.kind === 'disk' ? 'u ' + hit.u.toFixed(3) + '  v ' + hit.v.toFixed(3) + '<br>' : '') +
+      'P = <b>' + (isNum(shown) ? shown.toFixed(2) : '–') + ' dB</b>' +
+      (isFinite(mirrorVal) ? '<br><span style="color:#8b98ab">镜像 el=' + (-hit.el).toFixed(1) + '°: ' + mirrorVal.toFixed(2) + ' dB</span>' : '');
+    this.paint();
+  },
+  /** 方法下拉 / 频率滑块同步（数据更新后调用） */
+  syncControls() {
+    const B = state.data.beam; if (!B) return;
+    const want = state.params.method;
+    const fill = (sel) => {
+      sel.innerHTML = '';
+      B.order.forEach(k => {
+        const o = document.createElement('option');
+        o.value = k; o.textContent = k + (B.methods[k].error ? '（失败）' : '');
+        sel.appendChild(o);
+      });
+      sel.value = (B.order.indexOf(want) >= 0) ? want : B.order[0];
+    };
+    fill($('#bf-method'));
+    fill($('#p-showmethod'));
+    state.params.method = $('#bf-method').value;
+    const sl = $('#bf-fidx');
+    sl.max = String(Math.max(0, B.freqs.length - 1));
+    sl.value = String(clamp(+sl.value || 0, 0, B.freqs.length - 1));
+    $('#bf-freq').textContent = fmt(B.freqs[+sl.value], 0) + ' Hz';
+  },
+  run() {
+    const P = state.params;
+    setBusy('beam', 1);
+    setStatus('正在计算波束图…');
+    return ensureGeometry(false)
+      .then(() => callApi('波束图 /api/beamform', API.beamform, MOCK.beamform,
+        reqBody({ methods: P.methods, steer: [P.source.az, P.source.el], method: P.method })))
+      .then(raw => {
+        const B = normalizeBeam(raw);
+        if (!B) throw new Error('波束图：响应里没有 pattern_db');
+        if (raw && raw.geometry) { const g = normalizeGeometry(raw.geometry); if (g && !state.geomDirty) state.geometry = g; }
+        state.data.beam = B;
+        this.heatKey = '';
+        this.syncControls();
+        setStatus('波束图已更新（' + B.order.length + ' 个方法，' + B.freqs.length + ' 个频点）');
+      })
+      .catch(e => reportError('波束图', e))
+      .then(() => { setBusy('beam', -1); updateMetricsStrip(); this.paint(); });
+  }
+};
+/* ---- 8.5 声场图 / 定位 ---- */
+/**
+ * 定位/成像返回的 map/dirty/deconv 是**线性功率**（0..1），而"动态范围"滑块的单位是
+ * dB、-3 dB 主瓣判据也是相对 dB 的。所以这里统一先取 10log10 转成 dB 场再渲染，
+ * 否则会出现"整张图一个颜色"（线性值域 0..1 配 -25 dB 的下限 = 全部落在色条顶端）。
+ * 转换结果按数据版本缓存，避免每次重绘都遍历几十万点。
+ */
+/**
+ * 按数据实际分布定色标下限。
+ *
+ * 为什么需要它：这些图是**线性功率**转 dB，而线性图的 dB 动态范围常常很小
+ * —— 实测默认 8 元圆阵的脏图整体只有 9.5 dB 起伏（峰值 0.11~1.0），
+ * 而滑块默认给 20~25 dB，于是 5 分位以上的所有值都被挤到色标顶端，
+ * 整张图变成一片均匀的黄（真实发生过）。
+ *
+ * 做法：取 5 分位到峰值的跨度，向上取整到 1 dB，并夹在 [3, 40]；数据退化
+ * （无有限值/全相等）时回退到 fallback。
+ * 滑块拉到最小值即"自动"，用户一旦手动调大就用自己的值。
+ */
+function autoRangeDb(map, fallback) {
+  const f = Array.prototype.filter.call(map || [], isFinite);
+  if (!f.length) return fallback;
+  f.sort(function (a, b) { return a - b; });
+  const peak = f[f.length - 1];
+  const q05 = f[Math.floor(0.05 * (f.length - 1))];
+  if (!(peak > -1e290)) return fallback;
+  let span = peak - q05;
+  if (!isFinite(span) || span <= 0) span = 10;
+  // 峰值本身远低于 0 时（例如只有旁瓣），给一点余量
+  return Math.min(40, Math.max(3, Math.ceil(span) + 1));
+}
+
+const DbCache = {
+  map: {},
+  get(key, arr, floorLin) {
+    let c = this.map[key];
+    if (!c || c.length !== arr.length) {
+      c = new Float64Array(arr.length);
+      for (let i = 0; i < arr.length; i++) {
+        const v = arr[i];
+        c[i] = isFinite(v) ? 10 * Math.log10(Math.max(v, floorLin)) : NaN;
+      }
+      this.map[key] = c;
+      const ks = Object.keys(this.map);
+      if (ks.length > 12) delete this.map[ks[0]];
+    }
+    return c;
+  }
+};
+/** 把各种可能的真值/估计写法统一成 [[az,el],…]。 */
+function dirsList(raw) {
+  if (!raw) return [];
+  let a = raw;
+  if (!Array.isArray(a)) a = [a];
+  if (a.length && (typeof a[0] === 'number' || typeof a[0] === 'string')) a = [a];   // 单个 [az,el]
+  const out = [];
+  a.forEach(d => {
+    if (Array.isArray(d) && d.length >= 2) out.push([+d[0], +d[1]]);
+    else if (d && typeof d === 'object') {
+      if (isNum(d.az)) out.push([d.az, isNum(d.el) ? d.el : 0]);
+      else if (isNum(d.x)) { const e = azElOf([d.x, d.y, d.z || 0]); out.push([e.az, e.el]); }
+    }
+  });
+  return out;
+}
+function angErr(a1, e1, a2, e2) {
+  const u = dirVec(a1, e1), v = dirVec(a2, e2);
+  return Math.acos(clamp(u[0] * v[0] + u[1] * v[1] + u[2] * v[2], -1, 1)) * RAD;
+}
+const LocateView = {
+  heat: null, heatKey: '', dbCache: null, dbKey: '',
+  field() {
+    const L = state.data.locate; if (!L) return null;
+    const f = L.fields.map || L.fields.power || L.fields.beamformer_output || L.fields.dirty;
+    if (!f) return null;
+    const g = L.grid;
+    return { map: DbCache.get('lo' + L.seq, f, 1e-4), na: g.na, ne: g.ne, azAxis: g.azAxis, elAxis: g.elAxis, dirs: g.dirs, periodicAz: g.periodicAz, degenerateEl: g.degenerateEl };
+  },
+  paint() {
+    const cv = $('#cv-locate'); if (!cv || !cv.clientWidth) return;
+    const g = fitCanvas(cv), ctx = g.ctx;
+    ctx.fillStyle = '#0b0f16'; ctx.fillRect(0, 0, g.w, g.h);
+    const L = state.data.locate;
+    if (!L) { ctx.fillStyle = '#8b98ab'; ctx.font = '12px sans-serif'; ctx.fillText('还没有定位数据：点“运行”', 12, 24); return; }
+    const fld = this.field();
+    if (!fld) { ctx.fillStyle = '#ff8080'; ctx.font = '12px sans-serif'; ctx.fillText('定位响应里没有 map（扁平数组）', 12, 24); return; }
+    const peak = Math.max.apply(null, Array.prototype.filter.call(fld.map, isFinite));
+    const dyn = (+$('#lo-range').value <= 3) ? autoRangeDb(fld.map, 20) : +$('#lo-range').value;
+    const vmax = peak, vmin = peak - dyn;
+    const mode = $('#lo-proj').value;
+    const p = makeProj(mode, g.w, g.h, 16);
+    const key = 'lo:' + mode + ':' + dyn + ':' + g.w + 'x' + g.h + ':' + fld.na + 'x' + fld.ne + ':' + L.seq;
+    if (this.heatKey !== key) {
+      this.heat = (mode === 'disk')
+        ? heatDisk(fld, clamp(Math.round(p.side), 64, 620), { key: 'lo', cmap: 'inferno', vmin: vmin, vmax: vmax })
+        : heatRect(fld, clamp(Math.round(p.w), 32, 900), clamp(Math.round(p.h), 32, 900), { key: 'lo', cmap: 'inferno', vmin: vmin, vmax: vmax });
+      this.heatKey = key;
+    }
+    ctx.imageSmoothingEnabled = true;
+    if (mode === 'disk') ctx.drawImage(this.heat, p.cx - p.side / 2, p.cy - p.side / 2, p.side, p.side);
+    else ctx.drawImage(this.heat, p.x0, p.y0, p.w, p.h);
+    if ($('#lo-showgrid').checked) {
+      if (mode === 'disk') drawDiskFrame(ctx, p); else drawRectFrame(ctx, p, -180, 180, -90, 90);
+    }
+    const est = dirsList(L.raw.est_dirs || L.raw.est || L.raw.dirs_est);
+    const truth = dirsList(L.raw.truth || L.raw.truth_dirs || L.raw.sources);
+    const pkIdx = argmaxIdx(fld.map), pd = azElOf(fld.dirs[pkIdx]);
+    drawMarker(ctx, p, pd.az, pd.el, { color: '#ffffff', shape: 'circle', label: '图峰 ' + fmt(pd.az, 1) + '°/' + fmt(pd.el, 1) + '°', size: 5 });
+    truth.forEach((t, i) => drawMarker(ctx, p, t[0], t[1], { color: '#f2b134', shape: 'cross', label: '真值#' + (i + 1) + ' ' + fmt(t[0], 1) + '°/' + fmt(t[1], 1) + '°' }));
+    est.forEach((t, i) => drawMarker(ctx, p, t[0], t[1], { color: '#35d07f', shape: 'square', label: '估计#' + (i + 1) + ' ' + fmt(t[0], 1) + '°/' + fmt(t[1], 1) + '°', size: 5 }));
+    const hv = state.hover.locate;
+    if (hv) {
+      const q = p.toXY(hv.az, hv.el);
+      ctx.strokeStyle = 'rgba(110,220,255,.85)'; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
+      ctx.beginPath(); ctx.moveTo(q[0] - 8, q[1]); ctx.lineTo(q[0] + 8, q[1]);
+      ctx.moveTo(q[0], q[1] - 8); ctx.lineTo(q[0], q[1] + 8); ctx.stroke(); ctx.setLineDash([]);
+    }
+    drawColorbar($('#lo-legend'), 'inferno', vmin, vmax, 'dB');
+    $('#lo-legend-lab').textContent = fmt(vmin, 1) + ' … ' + fmt(vmax, 1) + ' dB';
+    // 标注：真值 vs 估计 + 误差表
+    let rows = '';
+    const n = Math.max(est.length, truth.length);
+    for (let i = 0; i < n; i++) {
+      const e = est[i], t = truth[i];
+      const err = (e && t) ? fmt(angErr(e[0], e[1], t[0], t[1]), 2) + '°' : '–';
+      rows += '<tr><td>#' + (i + 1) + '</td><td>' + (t ? fmt(t[0], 2) + '° / ' + fmt(t[1], 2) + '°' : '–') +
+        '</td><td>' + (e ? fmt(e[0], 2) + '° / ' + fmt(e[1], 2) + '°' : '–') + '</td><td>' + err + '</td></tr>';
+    }
+    $('#lo-annot').innerHTML =
+      '<b>方法</b> <span class="mono">' + (L.method || '–') + '</span> ｜ map ' + L.fields.map.length + ' 点，shape ' +
+      '[' + L.shape[0] + ',' + L.shape[1] + '] ｜ 显示范围 ' + fmt(vmin, 1) + '…' + fmt(vmax, 1) + ' dB' +
+      ((+$('#lo-range').value <= 3) ? '（自动 ' + fmt(dyn, 0) + ' dB）' : '') + '（线性图取 10log₁₀）' +
+      (L.raw.front_back_ambiguous ? ' ｜ <span class="pill warn">前后模糊</span> el 与 -el 不可分辨' : '') +
+      '<table class="mini" style="margin-top:5px"><tr><th>声源</th><th>真值 az/el</th><th>估计 az/el</th><th>角误差</th></tr>' +
+      (rows || '<tr><td colspan="4" class="muted">没有 est_dirs / truth</td></tr>') + '</table>';
+  },
+  hoverAt(e) {
+    const cv = $('#cv-locate'); const L = state.data.locate; if (!cv || !L) return;
+    const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    const p = makeProj($('#lo-proj').value, cv.clientWidth, cv.clientHeight, 16);
+    const hit = p.fromXY(x, y), tip = $('#tooltip');
+    if (!hit) { state.hover.locate = null; tip.classList.add('hidden'); this.paint(); return; }
+    const fld = this.field();
+    const v = sampleField(fld, hit.az, hit.el);
+    state.hover.locate = hit;
+    tip.classList.remove('hidden');
+    tip.style.left = Math.min(window.innerWidth - 190, e.clientX + 12) + 'px';
+    tip.style.top = (e.clientY + 14) + 'px';
+    tip.innerHTML = 'az ' + hit.az.toFixed(1) + '°  el ' + hit.el.toFixed(1) + '°<br>图值 <b>' + (isFinite(v) ? v.toFixed(2) + ' dB' : '–') + '</b>';
+    this.paint();
+  },
+  run() {
+    const P = state.params;
+    setBusy('locate', 1); setStatus('正在计算声场图…');
+    return ensureGeometry(false)
+      .then(() => callApi('定位 /api/locate', API.locate, MOCK.locate,
+        reqBody({ method: P.locateMethod })))
+      .then(raw => {
+        const L = normalizeField(raw, ['map', 'power', 'srp', 'beamformer_output']);
+        if (!L) throw new Error('定位：响应里没有 map');
+        L.raw = raw; L.method = raw.method || P.locateMethod; L.map = raw.map;
+        L.seq = ++state.dataSeq;
+        state.data.locate = L;
+        this.heatKey = '';
+        setStatus('声场图已更新（' + L.shape[1] + '×' + L.shape[0] + ' 网格）');
+      })
+      .catch(e => reportError('声场图 / 定位', e))
+      .then(() => { setBusy('locate', -1); this.paint(); });
+  }
+};
+
+/* ---- 8.6 声场成像（dirty vs deconv 并排） ---- */
+const ImagingView = {
+  heat: {}, heatKey: {},
+  field(name) {
+    const I = state.data.imaging; if (!I) return null;
+    const f = I.fields[name]; if (!f) return null;
+    const g = I.grid;
+    return { map: DbCache.get('im' + name + I.seq, f, 1e-4), na: g.na, ne: g.ne, azAxis: g.azAxis, elAxis: g.elAxis, dirs: g.dirs, periodicAz: g.periodicAz, degenerateEl: g.degenerateEl };
+  },
+  paintOne(cvId, name) {
+    const cv = $(cvId); if (!cv || !cv.clientWidth) return null;
+    const g = fitCanvas(cv), ctx = g.ctx;
+    ctx.fillStyle = '#0b0f16'; ctx.fillRect(0, 0, g.w, g.h);
+    const I = state.data.imaging;
+    if (!I) { ctx.fillStyle = '#8b98ab'; ctx.font = '12px sans-serif'; ctx.fillText('还没有成像数据：点“运行”', 12, 20); return null; }
+    const fld = this.field(name);
+    if (!fld) { ctx.fillStyle = '#ff8080'; ctx.font = '12px sans-serif'; ctx.fillText('响应里没有 ' + name, 12, 20); return null; }
+    const peak = Math.max.apply(null, Array.prototype.filter.call(fld.map, isFinite));
+    const dyn = (+$('#im-range').value <= 3) ? autoRangeDb(fld.map, 20) : +$('#im-range').value;
+    const vmax = peak, vmin = peak - dyn;
+    const mode = $('#im-proj').value;
+    const p = makeProj(mode, g.w, g.h, 14);
+    const key = 'im:' + name + ':' + mode + ':' + dyn + ':' + g.w + 'x' + g.h + ':' + fld.na + 'x' + fld.ne + ':' + state.data.imaging.seq;
+    if (this.heatKey[name] !== key) {
+      this.heat[name] = (mode === 'disk')
+        ? heatDisk(fld, clamp(Math.round(p.side), 64, 520), { key: 'im' + name, cmap: 'inferno', vmin: vmin, vmax: vmax })
+        : heatRect(fld, clamp(Math.round(p.w), 32, 800), clamp(Math.round(p.h), 32, 800), { key: 'im' + name, cmap: 'inferno', vmin: vmin, vmax: vmax });
+      this.heatKey[name] = key;
+    }
+    ctx.imageSmoothingEnabled = true;
+    if (mode === 'disk') ctx.drawImage(this.heat[name], p.cx - p.side / 2, p.cy - p.side / 2, p.side, p.side);
+    else ctx.drawImage(this.heat[name], p.x0, p.y0, p.w, p.h);
+    if (mode === 'disk') drawDiskFrame(ctx, p); else drawRectFrame(ctx, p, -180, 180, -90, 90);
+    const pkIdx = argmaxIdx(fld.map), pd = azElOf(fld.dirs[pkIdx]);
+    const reg = mainLobeRegion(fld, pkIdx, peak - 3);
+    fillRegion(ctx, p, fld, reg, name === 'deconv' ? 'rgba(120,255,190,.12)' : 'rgba(255,255,255,.10)');
+    drawRegionEdges(ctx, p, fld, reg, name === 'deconv' ? 'rgba(120,255,190,.9)' : 'rgba(255,255,255,.85)');
+    const hv = state.hover.img;
+    if (hv && hv.which === name) {
+      const q = p.toXY(hv.az, hv.el);
+      ctx.strokeStyle = 'rgba(110,220,255,.85)'; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
+      ctx.beginPath(); ctx.moveTo(q[0] - 8, q[1]); ctx.lineTo(q[0] + 8, q[1]);
+      ctx.moveTo(q[0], q[1] - 8); ctx.lineTo(q[0], q[1] + 8); ctx.stroke(); ctx.setLineDash([]);
+    }
+    const steer = [state.params.source.az, state.params.source.el];
+    drawMarker(ctx, p, steer[0], steer[1], { color: '#4ea1ff', shape: 'cross', label: '真值 ' + fmt(steer[0], 0) + '°/' + fmt(steer[1], 0) + '°' });
+    drawMarker(ctx, p, pd.az, pd.el, { color: '#ffffff', shape: 'circle', label: '峰 ' + fmt(pd.az, 1) + '°/' + fmt(pd.el, 1) + '°', size: 4 });
+    return { reg: reg, peak: peak, dir: pd };
+  },
+  paint() {
+    const a = this.paintOne('#cv-dirty', 'dirty');
+    const b = this.paintOne('#cv-deconv', 'deconv');
+    const I = state.data.imaging;
+    $('#im-dirty-w').textContent = a ? ('-3dB 角半径 ' + fmt(a.reg.maxAng, 1) + '°') : '–';
+    $('#im-deconv-w').textContent = b ? ('-3dB 角半径 ' + fmt(b.reg.maxAng, 1) + '°') : '–';
+    if (!I) { $('#im-annot').textContent = '还没有成像数据。'; return; }
+    const shrink = (a && b && a.reg.maxAng > 1e-6) ? (1 - b.reg.maxAng / a.reg.maxAng) * 100 : null;
+    $('#im-info').textContent = 'method = ' + (I.method || '–') + ' · 网格 ' + I.shape[1] + '×' + I.shape[0];
+    $('#im-annot').innerHTML =
+      '<b>method</b> <span class="mono">' + (I.method || '–') + '</span> ｜ 线性功率图先取 10log₁₀ 再显示；反卷积前后都用 -3 dB（半功率）等值线圈出主瓣：' +
+      'dirty 角半径 <b class="mono">' + (a ? fmt(a.reg.maxAng, 2) + '°' : '–') + '</b>（' + (a ? a.reg.count : '–') + ' 格） → ' +
+      'deconv <b class="mono">' + (b ? fmt(b.reg.maxAng, 2) + '°' : '–') + '</b>（' + (b ? b.reg.count : '–') + ' 格）' +
+      (shrink !== null ? ' ｜ 主瓣收窄 <b class="mono" style="color:#35d07f">' + fmt(shrink, 1) + '%</b>' : '') +
+      '<div class="hint" style="margin-top:4px">同一张方向网格上比较：脏图是常规延迟求和的空间响应，反卷积（如 DAMAS/CLEAN）去掉阵列 PSF 的卷积模糊后主瓣应显著变窄。</div>';
+  },
+  hoverAt(e, which) {
+    const cv = $(which === 'deconv' ? '#cv-deconv' : '#cv-dirty');
+    const I = state.data.imaging; if (!cv || !I) return;
+    const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    const p = makeProj($('#im-proj').value, cv.clientWidth, cv.clientHeight, 14);
+    const hit = p.fromXY(x, y), tip = $('#tooltip');
+    if (!hit) { tip.classList.add('hidden'); state.hover.img = null; return; }
+    state.hover.img = { which: which, az: hit.az, el: hit.el };
+    this.paint();
+    const fld = this.field(which);
+    const v = sampleField(fld, hit.az, hit.el);
+    tip.classList.remove('hidden');
+    tip.style.left = Math.min(window.innerWidth - 190, e.clientX + 12) + 'px';
+    tip.style.top = (e.clientY + 14) + 'px';
+    tip.innerHTML = which + '<br>az ' + hit.az.toFixed(1) + '°  el ' + hit.el.toFixed(1) + '°<br>' +
+      'dB <b>' + (isFinite(v) ? v.toFixed(2) : '–') + '</b>';
+    tip.style.left = Math.min(window.innerWidth - 190, e.clientX + 12) + 'px';
+    tip.style.top = (e.clientY + 14) + 'px';
+  },
+  run() {
+    const P = state.params;
+    setBusy('imaging', 1); setStatus('正在计算声场成像…');
+    return ensureGeometry(false)
+      .then(() => callApi('成像 /api/imaging', API.imaging, MOCK.imaging,
+        reqBody({ method: P.imagingMethod })))
+      .then(raw => {
+        const I = normalizeField(raw, ['dirty', 'deconv', 'psf', 'clean']);
+        if (!I) throw new Error('成像：响应里没有 dirty/deconv');
+        I.method = raw.method || P.imagingMethod;
+        I.seq = ++state.dataSeq;
+        state.data.imaging = I;
+        this.heatKey = {};
+        setStatus('成像已更新（method=' + I.method + '）');
+      })
+      .catch(e => reportError('声场成像', e))
+      .then(() => { setBusy('imaging', -1); this.paint(); });
+  }
+};
+
+/* ---- 8.7 语音增强 ---- */
+const CURVE_LABEL = {
+  snr_in_db: 'SNR 输入', snr_out_db: 'SNR 输出', si_sdr_in_db: 'SI-SDR 输入', si_sdr_out_db: 'SI-SDR 输出',
+  segmental_snr_in_db: '分段 SNR 输入', segmental_snr_out_db: '分段 SNR 输出', stoi_in: 'STOI 输入', stoi_out: 'STOI 输出'
+};
+const EnhanceView = {
+  paint() {
+    const E = state.data.enhance;
+    if (!E) { drawBars($('#cv-enbars'), []); drawCurve($('#cv-encurve'), [], []); return; }
+    const groups = [];
+    if (isNum(E.snr_in) || isNum(E.snr_out)) groups.push({
+      name: 'SNR', bars: [
+        { label: '输入', value: E.snr_in, color: '#f2b134' },
+        { label: '输出', value: E.snr_out, color: '#35d07f' }]
+    });
+    if (isNum(E.si_sdr_in) || isNum(E.si_sdr_out)) groups.push({
+      name: 'SI-SDR', bars: [
+        { label: '输入', value: E.si_sdr_in, color: '#f2b134' },
+        { label: '输出', value: E.si_sdr_out, color: '#35d07f' }]
+    });
+    drawBars($('#cv-enbars'), groups);
+    const series = E.curve.series.map(s => ({ name: CURVE_LABEL[s.name] || s.name, values: s.values }));
+    drawCurve($('#cv-encurve'), E.curve.x, series);
+    // 音频
+    const setAudio = (id, url, labId) => {
+      const a = $(id);
+      const real = url && !/^blob:/.test(url) ? API.url(url) : url;
+      if (real && a.getAttribute('data-src') !== real) { a.src = real; a.setAttribute('data-src', real); }
+      if (!real) { a.removeAttribute('src'); a.setAttribute('data-src', ''); }
+      $(labId).textContent = url ? (url.length > 46 ? '…' + url.slice(-44) : url) : '（后端未提供）';
+    };
+    setAudio('#au-enh', E.audio_url, '#en-a1-lab');
+    setAudio('#au-noisy', E.noisy_audio_url, '#en-a2-lab');
+    const g = [];
+    if (isNum(E.snr_gain)) g.push('SNR 提升 <b class="mono" style="color:#35d07f">+' + fmt(E.snr_gain, 2) + ' dB</b>');
+    if (isNum(E.si_sdr_gain)) g.push('SI-SDR 提升 <b class="mono" style="color:#35d07f">+' + fmt(E.si_sdr_gain, 2) + ' dB</b>');
+    const stoiTxt = (isNum(E.stoi_in) || isNum(E.stoi_out))
+      ? ('STOI 代理：<span class="mono">' + fmt(E.stoi_in, 3) + ' → ' + fmt(E.stoi_out, 3) + '</span>')
+      : '';
+    $('#en-info').textContent = 'method=' + (E.method || '–') + (E.fs ? (' · fs=' + E.fs + ' Hz') : '') + (E.n_samples ? (' · ' + E.n_samples + ' 样点') : '');
+    $('#en-annot') && ($('#en-annot').innerHTML = '');
+    const el0 = $('#en-info');
+    el0.title = stoiTxt.replace(/<[^>]+>/g, '');
+    if (E.demo) setStatus('语音增强：demo 模式（无干净参考），只给出可试听的增强输出', 'warn');
+    const box = $('#en-annot');
+    let extra = box.querySelector('.demo-note');
+    if (!extra) { extra = el('div', { class: 'demo-note hint', style: 'margin-top:6px' }); box.appendChild(extra); }
+    extra.innerHTML = (E.demo ? '<span class="pill warn">demo</span> 后端未提供干净参考，SNR/SI-SDR 指标为 null。' : '') +
+      (g.length ? ' ｜ ' + g.join(' ｜ ') : '') + (stoiTxt ? ' ｜ ' + stoiTxt : '');
+  },
+  run() {
+    const P = state.params;
+    setBusy('enhance', 1); setStatus('正在计算语音增强…');
+    return ensureGeometry(false)
+      .then(() => callApi('语音增强 /api/enhance', API.enhance, MOCK.enhance,
+        reqBody({ method: P.enhanceMethod, mode: P.enhanceDemo ? 'demo' : 'full' })))
+      .then(raw => {
+        const E = normalizeEnhance(raw);
+        if (!E) throw new Error('语音增强：响应为空');
+        state.data.enhance = E;
+        setStatus('语音增强已更新' + (isNum(E.snr_in) && isNum(E.snr_out) ? '：SNR ' + fmt(E.snr_in, 1) + ' → ' + fmt(E.snr_out, 1) + ' dB' : ''));
+      })
+      .catch(e => reportError('语音增强', e))
+      .then(() => { setBusy('enhance', -1); this.paint(); });
+  }
+};
+
+/* ---- 8.8 C++ 导出 + parity ---- */
+/** 把后端可能给的多种 parity 结构统一化。 */
+function normalizeParity(parity, tol) {
+  const out = { status: 'skipped', tol: tol || 1e-6, errors: {}, stdout: '', note: '' };
+  if (!parity) { out.note = '未返回 parity'; return out; }
+  out.status = String(parity.status || parity.result || 'unknown').toLowerCase();
+  out.tol = isNum(parity.tol) ? parity.tol : out.tol;
+  out.stdout = parity.stdout || parity.log || '';
+  let errs = parity.errors || parity.max_rel_errors || parity.modules || null;
+  if (Array.isArray(errs)) {
+    const o = {}; errs.forEach(e => { if (e && (e.name || e.module)) o[e.name || e.module] = +(e.error || e.value || e.max_rel_err); });
+    errs = o;
+  }
+  if (errs && typeof errs === 'object') {
+    Object.keys(errs).forEach(k => {
+      const v = errs[k];
+      const n = isNum(v) ? v : (v && isNum(v.error) ? v.error : (v && isNum(v.max_rel_error) ? v.max_rel_error : null));
+      if (n !== null) out.errors[k] = n;
+    });
+  }
+  // 从 stdout 里兜底解析（engine/codegen.py 打印 "[名字] 最大相对误差 X"）
+  if (!Object.keys(out.errors).length && out.stdout) {
+    out.stdout.split('\n').forEach(line => {
+      const m = /\[([^\]]+)\][^\n]*?([0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*$/.exec(line.trim());
+      if (m) { const v = parseFloat(m[2]); if (isFinite(v)) out.errors[m[1]] = v; }
+    });
+  }
+  if (out.status === 'pass' && !Object.keys(out.errors).length) out.note = '通过，但响应里没有逐模块误差';
+  if (out.status === 'done' || out.status === 'ok') out.status = 'pass';
+  return out;
+}
+const ExportView = {
+  renderStatus(msg, cls) { $('#ex-status').innerHTML = '<span class="pill ' + (cls || 'mock') + '">' + (cls === 'ok' ? '通过' : cls === 'bad' ? '失败' : '状态') + '</span> ' + msg; },
+  setProgress(p) {
+    $('#ex-bar').style.width = clamp(p * 100, 0, 100).toFixed(1) + '%';
+  },
+  renderResult(res, tol) {
+    const files = res.files || res.file_list || [];
+    $('#ex-files').innerHTML = files.length ? files.map(f => '<div>' + f + '</div>').join('') : '（后端未返回文件列表）';
+    $('#ex-outdir').textContent = res.outdir ? ('→ ' + res.outdir) : '';
+    $('#ex-log').textContent = res.compile_log || res.log || '（无日志）';
+    if (!res.parity) { $('#ex-parity').innerHTML = '<span class="pill warn">无 parity</span> 后端未返回数值一致性结果'; return; }
+    const P = normalizeParity(res.parity, tol);
+    const keys = Object.keys(P.errors);
+    const worst = keys.length ? Math.max.apply(null, keys.map(k => P.errors[k])) : null;
+    const pass = (P.status === 'pass') || (P.status !== 'fail' && P.status !== 'skipped' && worst !== null && worst <= P.tol);
+    const cls = P.status === 'skipped' ? 'warn' : (pass ? 'ok' : 'bad');
+    const head = cls === 'ok' ? '✔ parity 通过' : cls === 'bad' ? '✘ parity 失败' : '⚠ parity 跳过';
+    let rows = '';
+    keys.sort((a, b) => P.errors[b] - P.errors[a]).forEach(k => {
+      const v = P.errors[k], ok = v <= P.tol;
+      rows += '<tr><td>' + k + '</td><td class="mono" style="color:' + (ok ? '#35d07f' : '#ff6b6b') + '">' +
+        v.toExponential(2) + '</td><td>' + (ok ? '<span class="pill ok">≤ tol</span>' : '<span class="pill bad">&gt; tol</span>') + '</td></tr>';
+    });
+    $('#ex-parity').innerHTML =
+      '<div class="pill ' + cls + '" style="font-size:14px;padding:3px 12px">' + head + '</div> ' +
+      '<span class="muted">容差 ' + P.tol.toExponential(1) + '（|Δ|/|ref|）' + (worst !== null ? '，最差模块 ' + worst.toExponential(2) : '') + '</span>' +
+      (P.note ? ' <span class="muted">· ' + P.note + '</span>' : '') +
+      '<table class="mini" style="margin-top:6px"><tr><th>模块</th><th>最大相对误差</th><th>判定</th></tr>' +
+      (rows || '<tr><td colspan="3" class="muted">没有逐模块误差数据</td></tr>') + '</table>' +
+      (P.stdout ? '<details style="margin-top:6px"><summary style="cursor:pointer" class="muted">parity 原始输出</summary><pre class="mono" style="white-space:pre-wrap;font-size:11px;color:#9fb0c6">' + P.stdout.replace(/[<>]/g, '') + '</pre></details>' : '');
+  },
+  stopPoll() { if (state.exportJob.timer) { clearTimeout(state.exportJob.timer); state.exportJob.timer = null; } },
+  run() {
+    const P = state.params;
+    const body = reqBody({
+      method: P.export.method, name: P.export.name, tol: P.export.tol, verify: P.export.verify,
+      verify_parity: P.export.verify, outdir: null
+    });
+    this.stopPoll();
+    setBusy('export', 1);
+    this.setProgress(0);
+    this.renderStatus('正在提交导出任务…', 'mock');
+    $('#ex-files').textContent = '–'; $('#ex-parity').textContent = 'parity：等待任务完成…'; $('#ex-log').textContent = '–';
+    return ensureGeometry(false)
+      .then(() => callApi('导出 /api/export/cpp', API.exportCpp, MOCK.exportCpp, body))
+      .then(raw => {
+        if (raw && raw.result) { this.finish(raw.result); return; }
+        const jid = raw && (raw.job_id || raw.id);
+        if (!jid) { this.finish(raw); return; }
+        state.exportJob.id = jid;
+        state.exportJob.n = 0;
+        this.renderStatus('任务 <span class="mono">' + jid + '</span> 已提交，正在轮询 /api/jobs/' + jid, 'mock');
+        this.poll(jid);
+      })
+      .catch(e => { setBusy('export', -1); reportError('导出', e); this.renderStatus('提交失败：' + ((e && (e.zh || e.message)) || e), 'bad'); });
+  },
+  poll(jid) {
+    const self = this;
+    const tick = () => {
+      state.exportJob.n++;
+      if (state.exportJob.n > 80) {          // 80 × 400 ms ≈ 32 s
+        setBusy('export', -1);
+        reportError('导出', new Error('轮询超时（>32 s），任务 ' + jid + ' 仍未完成'));
+        return;
+      }
+      callApi('任务状态 /api/jobs/' + jid, () => API.job(jid), () => MOCK.job(jid), null).then(j => {
+        const st = String(j.status || '').toLowerCase();
+        const pr = isNum(j.progress) ? j.progress : (st === 'done' ? 1 : 0);
+        self.setProgress(pr);
+        self.renderStatus('任务 <span class="mono">' + jid + '</span> · <b>' + st + '</b> · ' +
+          (pr * 100).toFixed(0) + '% ' + (j.message ? '<span class="muted">' + j.message + '</span>' : ''),
+          st === 'done' ? 'ok' : (st === 'failed' || st === 'error' ? 'bad' : 'mock'));
+        if (st === 'done' || st === 'finished' || st === 'ok') {
+          setBusy('export', -1);
+          self.finish(j.result || j);
+          return;
+        }
+        if (st === 'failed' || st === 'error') {
+          setBusy('export', -1);
+          const msg = j.error || j.message || '任务失败';
+          reportError('导出', new Error(msg));
+          self.renderStatus('任务失败：' + msg, 'bad');
+          return;
+        }
+        state.exportJob.timer = setTimeout(tick, 400);
+      }).catch(e => {
+        setBusy('export', -1);
+        reportError('导出轮询', e);
+        self.renderStatus('轮询失败：' + ((e && (e.zh || e.message)) || e), 'bad');
+      });
+    };
+    state.exportJob.timer = setTimeout(tick, 250);
+  },
+  finish(res) {
+    res = res || {};
+    setBusy('export', -1);
+    this.setProgress(1);
+    const files = res.files || res.file_list || [];
+    this.renderStatus('完成：' + files.length + ' 个文件' + (res.elapsed_s ? '，耗时 ' + fmt(res.elapsed_s, 2) + ' s' : '') +
+      (res.outdir ? ' · <span class="mono">' + res.outdir + '</span>' : ''), 'ok');
+    this.renderResult(res, state.params.export.tol);
+    setStatus('C++ 导出完成（' + files.length + ' 个文件）');
+  }
+};
+
+/* ===== 9. UI 绑定与启动 ================================================== */
+function updateModeBadge() {
+  const b = $('#st-mode');
+  if (state.online) {
+    b.className = 'pill ok';
+    b.textContent = '在线后端';
+    b.title = '/api/health 返回 200 → 使用真实数据';
+  } else {
+    b.className = 'pill mock';
+    b.textContent = '离线 Mock';
+    b.title = '/api/health 不可用 → 使用内置 mock 数据（数值是简化模型，schema 与契约一致）';
+  }
+  $('#st-api').textContent = state.apiBase ? ('API: ' + state.apiBase) : 'API: 同源';
+  $('#param-src').textContent = state.online ? '后端' : 'mock';
+}
+const DATA_VIEWS = ['beam', 'locate', 'imaging', 'enhance'];
+function markStale(except) {
+  state.stale = state.stale || {};
+  DATA_VIEWS.forEach(v => { state.stale[v] = (v !== except); });
+  $$('#tabs .tab').forEach(t => {
+    const v = t.dataset.view;
+    const mark = state.stale[v] && state.data[v] ? ' •' : '';
+    t.textContent = t.textContent.replace(/ •$/, '') + mark;
+  });
+}
+function repaintView(name) {
+  if (name === 'beam') BeamView.paint();
+  else if (name === 'locate') LocateView.paint();
+  else if (name === 'imaging') ImagingView.paint();
+  else if (name === 'enhance') EnhanceView.paint();
+}
+function runView(name) {
+  if (name === 'beam') return BeamView.run();
+  if (name === 'locate') return LocateView.run();
+  if (name === 'imaging') return ImagingView.run();
+  if (name === 'enhance') return EnhanceView.run();
+  if (name === 'export') return ExportView.run();
+  return Promise.resolve();
+}
+function setView(name) {
+  state.view = name;
+  $$('#tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.view === name));
+  $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+  requestAnimationFrame(() => {
+    resizeAll();
+    if (name !== 'export' && state.stale && state.stale[name]) runView(name);
+    else if (name === 'export') repaintView('beam');
+    else repaintView(name);
+  });
+}
+/** 参数一变就重算当前视图；其它视图标脏，切过去时自动补算。 */
+const scheduleRun = debounce(function (reason) {
+  if (!state.params.auto) { markStale(null); setStatus('参数已修改（自动重算已关闭，点“运行”手动触发）', 'warn'); return; }
+  const v = state.view;
+  if (v === 'export') { markStale(null); setStatus('参数已修改：导出页不会自动重跑', 'warn'); return; }
+  markStale(v);
+  runView(v);
+}, 300);
+
+/* ---- 9.1 参数面板绑定 ---- */
+/** 滑块 + 数值回显的通用绑定。 */
+function bindRange(id, outId, fmtFn, apply) {
+  const inp = $(id), o = $(outId);
+  if (!inp) return;
+  const upd = () => { if (o) o.textContent = fmtFn(+inp.value); };
+  inp.addEventListener('input', () => { upd(); apply(+inp.value); });
+  upd();
+}
+function applyArrayParams(rebuild) {
+  const P = state.params;
+  P.preset = '';                                    // 手动改参数 = 不再是预设
+  ensureGeometry(true).then(() => { markStale(null); return runView(state.view === 'export' ? 'beam' : state.view); })
+    .catch(e => reportError('阵列重建', e));
+}
+function fillPresetSelect(presets) {
+  const sel = $('#preset-select');
+  sel.innerHTML = '';
+  const o0 = document.createElement('option');
+  o0.value = ''; o0.textContent = '（自定义）';
+  sel.appendChild(o0);
+  (presets || []).forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.name || p.label || '';
+    o.textContent = (p.label || p.name || 'preset') + (p.n_mics ? (' · ' + p.n_mics + ' 元') : '');
+    sel.appendChild(o);
+  });
+}
+function applyPresetToParams(p) {
+  if (!p) return;
+  const P = state.params;
+  P.preset = p.name || '';
+  if (p.kind) { P.kind = p.kind; $('#p-kind').value = p.kind; }
+  const q = p.params || {};
+  if (q.n_mics || p.n_mics) {
+    P.n_mics = Math.round(q.n_mics || p.n_mics);
+    $('#p-nmics').value = String(clamp(P.n_mics, +$('#p-nmics').min, +$('#p-nmics').max));
+    $('#p-nmics-v').textContent = P.n_mics + ' 元';
+  }
+  const rad = q.radius !== undefined ? q.radius : (q.spacing !== undefined ? q.spacing : null);
+  if (rad !== null) {
+    P.radius = rad; $('#p-radius').value = String(clamp(rad, +$('#p-radius').min, +$('#p-radius').max));
+    $('#p-radius-v').textContent = (+rad).toFixed(3) + ' m';
+  }
+  $('#preset-select').value = P.preset;
+  $('#param-src').textContent = (state.online ? '后端' : 'mock') + ' · ' + (P.preset || '自定义');
+}
+function bindParams() {
+  const P = state.params;
+  $('#preset-select').addEventListener('change', e => {
+    const name = e.target.value;
+    const p = (state.presets || []).filter(x => (x.name || x.label) === name)[0];
+    if (!p) { P.preset = ''; return; }
+    applyPresetToParams(p);
+    state.geomDirty = false;
+    ensureGeometry(true).then(() => { markStale(null); return runView(state.view === 'export' ? 'beam' : state.view); })
+      .catch(err => reportError('切换预设', err));
+  });
+  $('#p-kind').addEventListener('change', e => { P.kind = e.target.value; applyArrayParams(true); });
+  bindRange('#p-nmics', '#p-nmics-v', v => v + ' 元', v => { P.n_mics = v; applyArrayParams(true); });
+  bindRange('#p-radius', '#p-radius-v', v => v.toFixed(3) + ' m', v => { P.radius = v; applyArrayParams(true); });
+  bindRange('#p-az', '#p-az-v', v => v.toFixed(0) + '°', v => { P.source.az = v; scheduleRun('az'); });
+  bindRange('#p-el', '#p-el-v', v => v.toFixed(0) + '°', v => { P.source.el = v; scheduleRun('el'); });
+  bindRange('#p-dist', '#p-dist-v', v => v.toFixed(2) + ' m', v => { P.source.distance = v; scheduleRun('dist'); });
+  bindRange('#p-roomL', '#p-roomL-v', v => v.toFixed(1) + ' m', v => { P.room.size[0] = v; scheduleRun('room'); });
+  bindRange('#p-roomW', '#p-roomW-v', v => v.toFixed(1) + ' m', v => { P.room.size[1] = v; scheduleRun('room'); });
+  bindRange('#p-roomH', '#p-roomH-v', v => v.toFixed(1) + ' m', v => { P.room.size[2] = v; scheduleRun('room'); });
+  bindRange('#p-absorb', '#p-absorb-v', v => v.toFixed(2), v => { P.room.absorption = v; scheduleRun('absorb'); });
+  bindRange('#p-order', '#p-order-v', v => v.toFixed(0), v => { P.room.order = v; scheduleRun('order'); });
+  bindRange('#p-snr', '#p-snr-v', v => v.toFixed(0) + ' dB', v => { P.noise.snr_db = v; scheduleRun('snr'); });
+  bindRange('#p-gainstd', '#p-gainstd-v', v => v.toFixed(2), v => { P.mismatch.gain_std = v; scheduleRun('gain'); });
+  bindRange('#p-phasestd', '#p-phasestd-v', v => v.toFixed(0) + '°', v => { P.mismatch.phase_std_deg = v; scheduleRun('phase'); });
+  bindRange('#p-fmin', '#p-fmin-v', v => v + ' Hz', v => { P.freq.fmin = Math.min(v, P.freq.fmax); scheduleRun('fmin'); });
+  bindRange('#p-fmax', '#p-fmax-v', v => v + ' Hz', v => { P.freq.fmax = Math.max(v, P.freq.fmin); scheduleRun('fmax'); });
+  bindRange('#p-fn', '#p-fn-v', v => v + ' 点', v => { P.freq.n = v; scheduleRun('fn'); });
+  bindRange('#p-azbins', '#p-azbins-v', v => v + ' 格', v => { P.grid.az_bins = v; scheduleRun('azbins'); });
+  bindRange('#p-elbins', '#p-elbins-v', v => v + ' 格', v => { P.grid.el_bins = v; scheduleRun('elbins'); });
+  bindRange('#p-c', '#p-c-v', v => v + ' m/s', v => { P.c = v; applyArrayParams(true); });
+  $('#p-room-on').addEventListener('change', e => { P.room.enabled = e.target.checked; scheduleRun('room-on'); });
+  $('#p-auto').addEventListener('change', e => { P.auto = e.target.checked; });
+  $('#p-reset').addEventListener('click', () => {
+    state.params = defaultParams();
+    state.stale = null;
+    syncParamUI();
+    $('#angle-note').textContent = '';
+    ensureGeometry(true).then(() => { markStale(null); return Promise.all(DATA_VIEWS.map(runView)); })
+      .catch(e => reportError('重置', e));
+  });
+  // 波束成形方法多选
+  const box = $('#p-methods');
+  // 只列引擎真正实现的方法（CONTRACT 第 6 节）。
+// 早期版本多列了 lcmv / max_snr / min_variance，引擎并不存在这三个名字，
+// 后端现在把 lcmv/max_snr 映射到 max_sir、min_variance 映射到 mvdr，
+// 但 UI 不应该展示会静默改语义的选项。
+      const ALL = ['delay_sum', 'mvdr', 'superdirective', 'fi', 'max_sir', 'identity'];
+  ALL.forEach(m => {
+    const cb = el('input', { type: 'checkbox' });
+    cb.checked = P.methods.indexOf(m) >= 0;
+    cb.id = 'pm-' + m;
+    cb.addEventListener('change', () => {
+      const i = P.methods.indexOf(m);
+      if (cb.checked && i < 0) P.methods.push(m);
+      if (!cb.checked && i >= 0) P.methods.splice(i, 1);
+      if (!P.methods.length) { P.methods.push(m); cb.checked = true; reportWarn('至少保留一个波束成形方法'); }
+      if (state.params.method && P.methods.indexOf(state.params.method) < 0) state.params.method = P.methods[0];
+      scheduleRun('methods');
+    });
+    const lab = el('label', { class: 'chk' });
+    lab.appendChild(cb); lab.appendChild(document.createTextNode(m));
+    box.appendChild(lab);
+  });
+  // 视图内控件
+  $('#bf-method').addEventListener('change', e => { state.params.method = e.target.value; $('#p-showmethod').value = e.target.value; BeamView.paint(); });
+  $('#p-showmethod').addEventListener('change', e => { state.params.method = e.target.value; $('#bf-method').value = e.target.value; BeamView.paint(); });
+  $('#bf-fidx').addEventListener('input', e => {
+    const B = state.data.beam;
+    $('#bf-freq').textContent = B ? fmt(B.freqs[+e.target.value], 0) + ' Hz' : '–';
+    BeamView.paint();
+  });
+  $('#bf-range').addEventListener('input', e => { $('#bf-range-v').textContent = e.target.value + ' dB'; BeamView.paint(); });
+  $('#bf-proj').addEventListener('change', () => BeamView.paint());
+  // 最小档 = 自动：标签显示"自动"，实际跨度由 autoRangeDb 按数据定
+  $('#lo-range').addEventListener('input', e => {
+    $('#lo-range-v').textContent = (+e.target.value <= 3) ? '自动' : (e.target.value + ' dB');
+    LocateView.paint();
+  });
+  $('#lo-proj').addEventListener('change', () => LocateView.paint());
+  $('#lo-showgrid').addEventListener('change', () => LocateView.paint());
+  $('#lo-method').addEventListener('change', e => { state.params.locateMethod = e.target.value; runView('locate'); });
+  $('#im-range').addEventListener('input', e => {
+    $('#im-range-v').textContent = (+e.target.value <= 3) ? '自动' : (e.target.value + ' dB');
+    ImagingView.paint();
+  });
+  $('#im-proj').addEventListener('change', () => ImagingView.paint());
+  $('#im-method').addEventListener('change', e => { state.params.imagingMethod = e.target.value; runView('imaging'); });
+  $('#en-method').addEventListener('change', e => { state.params.enhanceMethod = e.target.value; runView('enhance'); });
+  $('#en-demo').addEventListener('change', e => { state.params.enhanceDemo = e.target.checked; runView('enhance'); });
+  $('#ex-run').addEventListener('click', () => ExportView.run());
+  $('#p-run-all').addEventListener('click', () => {
+    markStale(null);
+    DATA_VIEWS.reduce((chain, v) => chain.then(() => runView(v)), Promise.resolve())
+      .catch(e => reportError('批量运行', e));
+  });
+  $('#p-run-cur').addEventListener('click', () => { if (state.view === 'export') ExportView.run(); else { markStale(state.view); runView(state.view); } });
+  $('#ex-name').addEventListener('change', e => { state.params.export.name = e.target.value || 'beamformer'; });
+  $('#ex-method').addEventListener('change', e => { state.params.export.method = e.target.value; });
+  $('#ex-verify').addEventListener('change', e => { state.params.export.verify = e.target.checked; });
+  $('#ex-tol').addEventListener('change', e => { const v = parseFloat(e.target.value); state.params.export.tol = isFinite(v) && v > 0 ? v : 1e-6; });
+  // 折叠
+  $$('#right .sect>.h').forEach(h => h.addEventListener('click', () => h.parentNode.classList.toggle('collapsed')));
+}
+/** 把 state.params 写回所有控件（重置/预设切换后调用）。 */
+function syncParamUI() {
+  const P = state.params;
+  const set = (id, v, outId, txt) => { const e = $(id); if (e) { if (e.type === 'checkbox') e.checked = !!v; else e.value = String(v); } if (outId) $(outId).textContent = txt; };
+  $('#p-kind').value = P.kind;
+  set('#p-nmics', P.n_mics, '#p-nmics-v', P.n_mics + ' 元');
+  set('#p-radius', P.radius, '#p-radius-v', P.radius.toFixed(3) + ' m');
+  set('#p-az', P.source.az, '#p-az-v', P.source.az.toFixed(0) + '°');
+  set('#p-el', P.source.el, '#p-el-v', P.source.el.toFixed(0) + '°');
+  set('#p-dist', P.source.distance, '#p-dist-v', P.source.distance.toFixed(2) + ' m');
+  set('#p-room-on', P.room.enabled);
+  set('#p-roomL', P.room.size[0], '#p-roomL-v', P.room.size[0].toFixed(1) + ' m');
+  set('#p-roomW', P.room.size[1], '#p-roomW-v', P.room.size[1].toFixed(1) + ' m');
+  set('#p-roomH', P.room.size[2], '#p-roomH-v', P.room.size[2].toFixed(1) + ' m');
+  set('#p-absorb', P.room.absorption, '#p-absorb-v', P.room.absorption.toFixed(2));
+  set('#p-order', P.room.order, '#p-order-v', String(P.room.order));
+  set('#p-snr', P.noise.snr_db, '#p-snr-v', P.noise.snr_db.toFixed(0) + ' dB');
+  set('#p-gainstd', P.mismatch.gain_std, '#p-gainstd-v', P.mismatch.gain_std.toFixed(2));
+  set('#p-phasestd', P.mismatch.phase_std_deg, '#p-phasestd-v', P.mismatch.phase_std_deg.toFixed(0) + '°');
+  set('#p-fmin', P.freq.fmin, '#p-fmin-v', P.freq.fmin + ' Hz');
+  set('#p-fmax', P.freq.fmax, '#p-fmax-v', P.freq.fmax + ' Hz');
+  set('#p-fn', P.freq.n, '#p-fn-v', P.freq.n + ' 点');
+  set('#p-azbins', P.grid.az_bins, '#p-azbins-v', P.grid.az_bins + ' 格');
+  set('#p-elbins', P.grid.el_bins, '#p-elbins-v', P.grid.el_bins + ' 格');
+  set('#p-c', P.c, '#p-c-v', P.c + ' m/s');
+  set('#p-auto', P.auto);
+  set('#bf-range', P.dyn.beam, '#bf-range-v', P.dyn.beam + ' dB');
+  set('#lo-range', P.dyn.locate, '#lo-range-v', (+P.dyn.locate <= 3) ? '自动' : (P.dyn.locate + ' dB'));
+  set('#im-range', P.dyn.imaging, '#im-range-v', (+P.dyn.imaging <= 3) ? '自动' : (P.dyn.imaging + ' dB'));
+  set('#lo-method', P.locateMethod);
+  set('#im-method', P.imagingMethod);
+  set('#en-method', P.enhanceMethod);
+  set('#ex-name', P.export.name);
+  set('#ex-method', P.export.method);
+  set('#ex-verify', P.export.verify);
+  set('#ex-tol', P.export.tol);
+  $$('#p-methods input').forEach(cb => { cb.checked = P.methods.indexOf(cb.id.replace('pm-', '')) >= 0; });
+}
+/* ---- 9.2 尺寸变化 ---- */
+function resizeAll() {
+  ArrayView.paint(); HistView.paint(); repaintView(state.view);
+  drawColorbar($('#bf-legend'), 'viridis', -35, 0, 'dB');
+  drawColorbar($('#lo-legend'), 'turbo', -20, 0, 'dB');
+}
+const onResize = debounce(resizeAll, 120);
+
+/* ---- 9.3 启动 ---- */
+async function boot() {
+  state.params = defaultParams();
+  $('#angle-note').textContent = '角度约定：az 由 +x 逆时针量向 +y；el 由 xy 平面量向 +z —— el=+90° 正对阵列 (boresight)，el=0° 在阵面内，el=-90° 为阵列正后方。所有输出都在阵列坐标系。';
+  state.apiBase = resolveApiBase();
+  ArrayView.init(); HistView.init();
+  bindParams(); syncParamUI(); updateModeBadge();
+  // 标签页
+  $$('#tabs .tab').forEach(t => t.addEventListener('click', () => setView(t.dataset.view)));
+  $('#btn-run').addEventListener('click', () => {
+    if (state.view === 'export') ExportView.run();
+    else { markStale(state.view); runView(state.view); }
+  });
+  $('#btn-export').addEventListener('click', () => { setView('export'); ExportView.run(); });
+  $('#btn-log').addEventListener('click', () => {
+    const lp = $('#logpanel');
+    lp.classList.toggle('hidden');
+    lp.textContent = state.log.slice(-80).join('\n') || '（暂无日志）';
+  });
+  // 鼠标悬停：显示该方向的 dB 值
+  const bindHover = (id, fn) => {
+    const cv = $(id); if (!cv) return;
+    cv.addEventListener('mousemove', fn);
+    cv.addEventListener('mouseleave', () => {
+      $('#tooltip').classList.add('hidden');
+      if (id === '#cv-beam') { state.hover.beam = null; BeamView.paint(); }
+      if (id === '#cv-locate') { state.hover.locate = null; LocateView.paint(); }
+      if (id === '#cv-dirty' || id === '#cv-deconv') { state.hover.img = null; ImagingView.paint(); }
+    });
+  };
+  bindHover('#cv-beam', e => BeamView.hoverAt(e));
+  bindHover('#cv-locate', e => LocateView.hoverAt(e));
+  bindHover('#cv-dirty', e => ImagingView.hoverAt(e, 'dirty'));
+  bindHover('#cv-deconv', e => ImagingView.hoverAt(e, 'deconv'));
+  // 布局变化重绘
+  if (window.ResizeObserver) {
+    const ro = new window.ResizeObserver(onResize);
+    ro.observe($('#center')); ro.observe($('#left')); ro.observe($('#right'));
+  }
+  window.addEventListener('resize', onResize);
+  window.addEventListener('error', ev => {
+    const msg = 'JS 运行时错误：' + (ev.message || ev.error) + (ev.filename ? (' @' + ev.filename.split('/').pop() + ':' + ev.lineno) : '');
+    setStatus(msg, 'err'); logLine(msg, 'err');
+  });
+  window.addEventListener('unhandledrejection', ev => {
+    const m = (ev.reason && (ev.reason.zh || ev.reason.message)) || ev.reason;
+    setStatus('未处理的异步错误：' + m, 'err'); logLine('未处理的异步错误：' + m, 'err');
+  });
+  setStatus('正在连接 /api/health …');
+  // 1) 健康检查：200 才切到真实数据
+  try {
+    state.health = await API.health();
+    state.online = true;
+    updateModeBadge();
+    logLine('已连接后端：' + JSON.stringify(state.health).slice(0, 200));
+  } catch (e) {
+    state.online = false;
+    updateModeBadge();
+    reportWarn('未检测到后端 /api/health（' + (e.zh || e.message) + '）→ 切换到内置 mock 数据；界面功能全部可用，数值为简化模型');
+  }
+  // 2) 阵列预设
+  try {
+    const a = await callApi('阵列预设 /api/arrays', API.arrays,
+      () => ({ presets: MOCK.PRESETS, current: MOCK.designArray({ preset: MOCK.PRESETS[0].name }) }), null);
+    state.presets = (a && a.presets) || MOCK.PRESETS;
+    fillPresetSelect(state.presets);
+    if (a && a.current) {
+      const g = normalizeGeometry(a.current);
+      if (g) state.geometry = g;
+    }
+  } catch (e) {
+    reportError('阵列预设', e);
+    state.presets = MOCK.PRESETS;
+    fillPresetSelect(state.presets);
+  }
+  const p0 = (state.presets || [])[0];
+  if (p0) applyPresetToParams(p0);
+  // 3) 阵列几何
+  try {
+    await ensureGeometry(!state.geometry);
+  } catch (e) {
+    reportError('初始化阵列', e);
+    state.geometry = normalizeGeometry(MOCK.designArray({ preset: (p0 && p0.name) || 'uca-16' }));
+  }
+  updateModeBadge();
+  updateMetricsStrip();
+  resizeAll();
+  // 4) 首屏跑一次
+  await runView('beam');
+  markStale('beam');
+  const errs = errorCount();
+  if (errs) {
+    setStatus('启动完成，但有 ' + errs + ' 个请求失败 —— 详见右下“错误日志”', 'err');
+  } else {
+    setStatus((state.online ? '就绪（真实后端）' : '就绪（内置 mock 模式）') + ' · 当前视图：波束图');
+  }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  boot().catch(e => {
+    setStatus('初始化失败：' + ((e && (e.zh || e.message)) || e), 'err');
+    logLine('初始化失败：' + ((e && e.stack) || e), 'err');
+  });
+});
+
+</script>
+</body>
+</html>
